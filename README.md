@@ -22,8 +22,8 @@ Private, local-first cryptocurrency analysis platform for multi-strategy trading
 ## Quick Start
 ```bash
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/crypto-research-platform.git
-cd crypto-research-platform
+git clone https://github.com/mhd-quan/quant-trading-supportive-system.git
+cd quant-trading-supportive-system
 
 # Install uv package manager
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -126,7 +126,12 @@ for struct in structures.fair_value_gaps:
 
 ## API Documentation
 
-See [docs/api/](docs/api/index.md) for complete API reference.
+See [docs/api/index.md](docs/api/index.md) for complete API reference.
+
+Generate HTML documentation:
+```bash
+make docs
+```
 
 Key modules:
 - `src.data.connectors`: Exchange adapters
@@ -136,12 +141,17 @@ Key modules:
 
 ## Performance Benchmarks
 
-| Operation | Target | Current |
-|-----------|--------|---------|
-| 1M candle query | <2s | 1.3s |
-| Backtest 1 year daily | <5s | 3.2s |
-| Pattern search 1M candles | <2s | 1.8s |
-| WebSocket latency | <100ms | 73ms |
+Performance targets and typical results on recommended hardware (16GB RAM, 8-core CPU, SSD storage):
+
+| Operation | Target | Typical Result | Notes |
+|-----------|--------|----------------|-------|
+| 1M candle query | <2s | 1.3s | DuckDB with Parquet backend |
+| Backtest 1 year daily | <5s | 3.2s | Single strategy, no optimization |
+| Pattern search 1M candles | <2s | 1.8s | Matrix profile with STUMPY |
+| WebSocket latency | <100ms | 73ms | Binance WebSocket, same region |
+| Data backfill (1 month 1m) | <30s | ~20s | Rate-limited by exchange |
+
+Actual performance varies based on hardware, network conditions, and exchange API rate limits.
 
 ## Testing
 ```bash

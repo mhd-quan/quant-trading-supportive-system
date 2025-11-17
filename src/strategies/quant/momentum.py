@@ -6,6 +6,7 @@ from loguru import logger
 
 from src.strategies.base import BaseStrategy, Signal, SignalType
 from src.analytics.indicators.technical import TechnicalIndicators
+import pandas_ta as ta_lib
 
 
 class MomentumStrategy(BaseStrategy):
@@ -35,13 +36,26 @@ class MomentumStrategy(BaseStrategy):
 
         signals = []
 
-        # Add indicators
-        df["fast_ema"] = TechnicalIndicators.add_all_indicators(df)[f"ema_{self.fast_ma}"] if f"ema_{self.fast_ma}" not in df.columns else df[f"ema_{self.fast_ma}"]
-        df["slow_ema"] = TechnicalIndicators.add_all_indicators(df)[f"ema_{self.slow_ma}"] if f"ema_{self.slow_ma}" not in df.columns else df[f"ema_{self.slow_ma}"]
-        df["kama"] = TechnicalIndicators.calculate_kama(df["close"], period=self.kama_period)
-        df["atr"] = TechnicalIndicators.add_all_indicators(df)["atr_14"]
+        # Add indicators with configured periods
+        if f"ema_{self.fast_ma}" not in df.columns:
+            df["fast_ema"] = ta_lib.ema(df["close"], length=self.fast_ma)
+        else:
+            df["fast_ema"] = df[f"ema_{self.fast_ma}"]
 
-        # Calculate KAMA efficiency
+        if f"ema_{self.slow_ma}" not in df.columns:
+            df["slow_ema"] = ta_lib.ema(df["close"], length=self.slow_ma)
+        else:
+            df["slow_ema"] = df[f"ema_{self.slow_ma}"]
+
+        df["kama"] = TechnicalIndicators.calculate_kama(df["close"], period=self.kama_period)
+
+        if "atr_14" not in df.columns:
+            atr = ta_lib.atr(df["high"], df["low"], df["close"], length=14)
+            df["atr"] = atr if atr is not None else 0
+        else:
+            df["atr"] = df["atr_14"]
+
+        # Calculate KAMA efficiency (aligned with KAMA calculation)
         change = abs(df["close"] - df["close"].shift(self.kama_period))
         volatility = abs(df["close"].diff()).rolling(window=self.kama_period).sum()
         df["efficiency"] = change / volatility
@@ -104,5 +118,16 @@ class MomentumStrategy(BaseStrategy):
                 )
 
         self.signals = signals
-        logger.info(f"Generated {len(signals)} momentum signals")
+
+        if len(signals) == 0:
+            logger.warning(
+                f"No momentum signals generated. "
+                f"Data length: {len(df)}, "
+                f"Min efficiency threshold: {self.min_efficiency}. "
+                f"Possible reasons: No MA crossovers, efficiency too low, "
+                f"or price not aligned with KAMA"
+            )
+        else:
+            logger.info(f"Generated {len(signals)} momentum signals")
+
         return signals

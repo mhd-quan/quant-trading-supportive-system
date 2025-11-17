@@ -2,7 +2,7 @@
 
 import pytest
 from src.strategies.base import BaseStrategy, Signal, SignalType
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def test_position_size_calculation():

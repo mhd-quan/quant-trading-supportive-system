@@ -37,7 +37,6 @@ jobs:
       - name: Type check with mypy
         run: |
           mypy src/
-        continue-on-error: true
 
       - name: Format check with black
         run: |
@@ -69,15 +68,12 @@ jobs:
 
       - name: Run bandit
         run: |
-          bandit -r src/
-        continue-on-error: true
+          bandit -r src/ -ll
 
       - name: Run safety check
         run: |
-          safety check
-        continue-on-error: true
+          safety check --ignore 70612
 
       - name: Run pip-audit
         run: |
-          pip-audit
-        continue-on-error: true
+          pip-audit --skip-editable

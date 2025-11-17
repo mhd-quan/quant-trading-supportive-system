@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import pandas as pd
 
@@ -88,6 +88,9 @@ class BaseStrategy(ABC):
         entry_price: float,
         stop_price: float,
         leverage: float = 1.0,
+        atr: Optional[float] = None,
+        max_atr_multiple: float = 5.0,
+        min_atr_multiple: float = 0.5,
     ) -> Dict[str, float]:
         """Calculate position size using fixed risk.
 
@@ -97,28 +100,55 @@ class BaseStrategy(ABC):
             entry_price: Entry price
             stop_price: Stop loss price
             leverage: Leverage multiplier
+            atr: Optional ATR value for validation
+            max_atr_multiple: Maximum stop distance as ATR multiple
+            min_atr_multiple: Minimum stop distance as ATR multiple
 
         Returns:
             Dictionary with position sizing info
         """
         risk_amount = account_balance * risk_percent
         stop_distance = abs(entry_price - stop_price)
+
+        # Division by zero guard
+        if entry_price == 0:
+            return {
+                "position_size": 0,
+                "quantity": 0,
+                "risk_amount": risk_amount,
+                "stop_distance": stop_distance,
+                "stop_percent": 0,
+                "warnings": ["Entry price is zero"],
+            }
+
         stop_percent = stop_distance / entry_price
+
+        # Validate stop loss against ATR if provided
+        warnings = []
+        if atr is not None and atr > 0:
+            atr_multiple = stop_distance / atr
+            if atr_multiple > max_atr_multiple:
+                warnings.append(f"Stop loss too wide: {atr_multiple:.2f}x ATR (max {max_atr_multiple}x)")
+            elif atr_multiple < min_atr_multiple:
+                warnings.append(f"Stop loss too tight: {atr_multiple:.2f}x ATR (min {min_atr_multiple}x)")
 
         if stop_percent == 0:
             position_size = 0
             quantity = 0
+            warnings.append("Stop distance is zero")
         else:
             position_size = risk_amount / stop_percent
-            position_size = min(position_size, account_balance * 0.2)  # Max 20% allocation
+            position_size = position_size * leverage  # Apply leverage first
+            position_size = min(position_size, account_balance * 0.2)  # Then cap at 20%
             quantity = position_size / entry_price
 
         return {
-            "position_size": position_size * leverage,
-            "quantity": quantity * leverage,
+            "position_size": position_size,
+            "quantity": quantity,
             "risk_amount": risk_amount,
             "stop_distance": stop_distance,
             "stop_percent": stop_percent * 100,
+            "warnings": warnings,
         }
 
     def get_signal_summary(self) -> Dict[str, Any]:
@@ -173,25 +203,26 @@ class BaseStrategy(ABC):
             vol_mean = df["volume"].iloc[-30:].mean()
             vol_std = df["volume"].iloc[-30:].std()
             recent_vol = df["volume"].iloc[-10:].mean()
-            volume_score = (
-                (recent_vol - vol_mean) / vol_std if vol_std > 0 else 0
-            )
-            volume_score = max(0, min(volume_score, 3)) / 3  # Normalize 0-1
+            # Check both std and mean to avoid NaN values
+            if vol_std > 0 and vol_mean > 0:
+                volume_score = (recent_vol - vol_mean) / vol_std
+                volume_score = max(0, min(volume_score, 3)) / 3  # Normalize 0-1
+            else:
+                volume_score = 0
 
             # Slippage penalty (estimate from spread)
             spread = (df["high"] - df["low"]).iloc[-20:].mean()
             avg_price = df["close"].iloc[-20:].mean()
             slippage_penalty = (spread / avg_price) if avg_price > 0 else 1
 
-            # Liquidity score (inverse of slippage)
+            # Liquidity score (inverse of slippage, normalized 0-1)
             liquidity_score = 1 - min(slippage_penalty * 10, 1)
 
-            # Combined score
+            # Combined score (weights sum to 1.0, no double-counting)
             score = (
-                0.3 * trend_efficiency
+                0.4 * trend_efficiency
                 + 0.3 * volume_score
-                - 0.2 * slippage_penalty
-                + 0.2 * liquidity_score
+                + 0.3 * liquidity_score
             )
 
             reasoning = (

@@ -56,16 +56,20 @@ class VWAPPullbackStrategy(BaseStrategy):
 
         signals = []
 
-        # Add required indicators
+        # Add required indicators (call once, extract multiple)
+        missing_indicators = []
         if "vwap" not in df.columns:
-            vwap = TechnicalIndicators.add_all_indicators(df)["vwap"]
-            df["vwap"] = vwap
-
+            missing_indicators.append("vwap")
         if "ema_9" not in df.columns:
-            df["ema_9"] = TechnicalIndicators.add_all_indicators(df)["ema_9"]
-
+            missing_indicators.append("ema_9")
         if "atr_14" not in df.columns:
-            df["atr_14"] = TechnicalIndicators.add_all_indicators(df)["atr_14"]
+            missing_indicators.append("atr_14")
+
+        if missing_indicators:
+            df_with_indicators = TechnicalIndicators.add_all_indicators(df)
+            for indicator in missing_indicators:
+                if indicator in df_with_indicators.columns:
+                    df[indicator] = df_with_indicators[indicator]
 
         # Volume z-score
         vol_mean = df["volume"].rolling(window=20).mean()
@@ -100,12 +104,11 @@ class VWAPPullbackStrategy(BaseStrategy):
                 stop_loss = entry_price - (current["atr_14"] * self.stop_atr_multiple)
                 take_profit = entry_price + (current["atr_14"] * self.tp_atr_multiple)
 
-                # Calculate confidence based on volume and momentum
-                confidence = min(
-                    1.0,
-                    (current["volume_zscore"] / 3) * 0.5
-                    + (abs(current["ema_slope"]) / current["close"] * 1000) * 0.5,
-                )
+                # Calculate confidence based on volume and momentum (normalized properly)
+                volume_factor = min(1.0, current["volume_zscore"] / 3) if current["volume_zscore"] > 0 else 0
+                # Normalize momentum by EMA value instead of close price
+                momentum_factor = min(1.0, abs(current["ema_slope"]) / (current["ema_9"] * 0.01)) if current["ema_9"] > 0 else 0
+                confidence = 0.6 * volume_factor + 0.4 * momentum_factor
 
                 signals.append(
                     Signal(
@@ -136,11 +139,11 @@ class VWAPPullbackStrategy(BaseStrategy):
                 stop_loss = entry_price + (current["atr_14"] * self.stop_atr_multiple)
                 take_profit = entry_price - (current["atr_14"] * self.tp_atr_multiple)
 
-                confidence = min(
-                    1.0,
-                    (current["volume_zscore"] / 3) * 0.5
-                    + (abs(current["ema_slope"]) / current["close"] * 1000) * 0.5,
-                )
+                # Calculate confidence based on volume and momentum (normalized properly)
+                volume_factor = min(1.0, current["volume_zscore"] / 3) if current["volume_zscore"] > 0 else 0
+                # Normalize momentum by EMA value instead of close price
+                momentum_factor = min(1.0, abs(current["ema_slope"]) / (current["ema_9"] * 0.01)) if current["ema_9"] > 0 else 0
+                confidence = 0.6 * volume_factor + 0.4 * momentum_factor
 
                 signals.append(
                     Signal(
@@ -161,5 +164,17 @@ class VWAPPullbackStrategy(BaseStrategy):
                 )
 
         self.signals = signals
-        logger.info(f"Generated {len(signals)} VWAP pullback signals")
+
+        if len(signals) == 0:
+            logger.warning(
+                f"No VWAP pullback signals generated. "
+                f"Data length: {len(df)}, "
+                f"Volume threshold: {self.volume_threshold}. "
+                f"Possible reasons: No VWAP touches, volume too low, "
+                f"or distance from VWAP out of range "
+                f"({self.min_distance_pct}%-{self.max_distance_pct}%)"
+            )
+        else:
+            logger.info(f"Generated {len(signals)} VWAP pullback signals")
+
         return signals

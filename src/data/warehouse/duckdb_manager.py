@@ -3,35 +3,42 @@
 import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import duckdb
 from loguru import logger
+import threading
 
 
 class DuckDBManager:
     """Manage DuckDB database for cryptocurrency data."""
 
-    def __init__(self, db_path: str = "./data/crypto.duckdb"):
+    def __init__(self, db_path: Optional[str] = None):
         """Initialize DuckDB manager.
 
         Args:
-            db_path: Path to DuckDB database file
+            db_path: Path to DuckDB database file. If None, uses DUCKDB_PATH
+                    environment variable or defaults to "./data/crypto.duckdb"
         """
+        if db_path is None:
+            db_path = os.getenv("DUCKDB_PATH", "./data/crypto.duckdb")
+
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn: Optional[duckdb.DuckDBPyConnection] = None
+        self._lock = threading.RLock()  # Thread-safe connection handling
         logger.info(f"DuckDB Manager initialized with database: {self.db_path}")
 
     def connect(self) -> duckdb.DuckDBPyConnection:
-        """Establish connection to DuckDB database.
+        """Establish connection to DuckDB database (thread-safe).
 
         Returns:
             DuckDB connection object
         """
-        if self.conn is None:
-            self.conn = duckdb.connect(str(self.db_path))
-            logger.info(f"Connected to DuckDB at {self.db_path}")
+        with self._lock:
+            if self.conn is None:
+                self.conn = duckdb.connect(str(self.db_path))
+                logger.info(f"Connected to DuckDB at {self.db_path}")
         return self.conn
 
     def close(self) -> None:
@@ -134,7 +141,7 @@ class DuckDBManager:
     def insert_ohlcv(
         self, df: pd.DataFrame, replace_duplicates: bool = True
     ) -> int:
-        """Insert OHLCV data into database.
+        """Insert OHLCV data into database with transaction management.
 
         Args:
             df: DataFrame with OHLCV data
@@ -147,53 +154,112 @@ class DuckDBManager:
             logger.warning("Empty DataFrame provided, skipping insert")
             return 0
 
-        conn = self.connect()
+        with self._lock:
+            conn = self.connect()
 
-        # Validate required columns
-        required_cols = [
-            "exchange",
-            "symbol",
-            "timeframe",
-            "timestamp",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-        ]
-        if not all(col in df.columns for col in required_cols):
-            missing = [col for col in required_cols if col not in df.columns]
-            raise ValueError(f"Missing required columns: {missing}")
+            # Validate required columns
+            required_cols = [
+                "exchange",
+                "symbol",
+                "timeframe",
+                "timestamp",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+            ]
+            if not all(col in df.columns for col in required_cols):
+                missing = [col for col in required_cols if col not in df.columns]
+                raise ValueError(f"Missing required columns: {missing}")
 
-        # Prepare DataFrame
-        df_insert = df.copy()
-        df_insert["timestamp"] = pd.to_datetime(df_insert["timestamp"])
+            # Prepare DataFrame
+            df_insert = df.copy()
+            df_insert["timestamp"] = pd.to_datetime(df_insert["timestamp"])
 
+            # Deduplicate DataFrame before insert
+            initial_count = len(df_insert)
+            df_insert = df_insert.drop_duplicates(
+                subset=["exchange", "symbol", "timeframe", "timestamp"],
+                keep="first"
+            )
+            duplicates_removed = initial_count - len(df_insert)
+            if duplicates_removed > 0:
+                logger.info(f"Removed {duplicates_removed} duplicate rows from DataFrame")
+
+            try:
+                # Begin transaction
+                conn.execute("BEGIN TRANSACTION")
+
+                if replace_duplicates:
+                    # Use INSERT OR REPLACE
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO ohlcv_raw
+                        SELECT * FROM df_insert
+                    """
+                    )
+                else:
+                    # Use INSERT OR IGNORE to skip duplicates
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO ohlcv_raw
+                        SELECT * FROM df_insert
+                    """
+                    )
+
+                # Update metadata table
+                if not df_insert.empty:
+                    self._update_metadata(conn, df_insert)
+
+                # Commit transaction
+                conn.execute("COMMIT")
+
+                rows_affected = len(df_insert)
+                logger.info(f"Inserted {rows_affected} rows into ohlcv_raw")
+                return rows_affected
+
+            except Exception as e:
+                # Rollback on error
+                logger.error(f"Error inserting data: {e}")
+                try:
+                    conn.execute("ROLLBACK")
+                    logger.info("Transaction rolled back")
+                except Exception as rollback_error:
+                    logger.error(f"Error during rollback: {rollback_error}")
+                raise
+
+    def _update_metadata(self, conn: duckdb.DuckDBPyConnection, df: pd.DataFrame):
+        """Update metadata table after successful insert.
+
+        Args:
+            conn: Database connection
+            df: DataFrame that was inserted
+        """
         try:
-            if replace_duplicates:
-                # Use INSERT OR REPLACE
+            # Group by exchange, symbol, timeframe
+            for (exchange, symbol, timeframe), group_df in df.groupby(
+                ["exchange", "symbol", "timeframe"]
+            ):
+                first_ts = group_df["timestamp"].min()
+                last_ts = group_df["timestamp"].max()
+                total_records = len(group_df)
+
+                # Update or insert metadata
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO ohlcv_raw
-                    SELECT * FROM df_insert
-                """
+                    INSERT OR REPLACE INTO data_quality_metadata
+                    (exchange, symbol, timeframe, first_timestamp, last_timestamp,
+                     total_records, last_validation)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                    [exchange, symbol, timeframe, first_ts, last_ts, total_records],
                 )
-            else:
-                # Use INSERT OR IGNORE to skip duplicates
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO ohlcv_raw
-                    SELECT * FROM df_insert
-                """
+                logger.debug(
+                    f"Updated metadata for {exchange} {symbol} {timeframe}"
                 )
-
-            rows_affected = len(df_insert)
-            logger.info(f"Inserted {rows_affected} rows into ohlcv_raw")
-            return rows_affected
-
         except Exception as e:
-            logger.error(f"Error inserting data: {e}")
-            raise
+            logger.error(f"Error updating metadata: {e}")
 
     def query_ohlcv(
         self,
@@ -379,7 +445,7 @@ class DuckDBManager:
             "invalid_ohlc_count": invalid_ohlc,
             "duplicate_count": duplicates,
             "gap_count": len(gaps_df),
-            "validation_timestamp": datetime.utcnow(),
+            "validation_timestamp": datetime.now(timezone.utc),
         }
 
     @staticmethod

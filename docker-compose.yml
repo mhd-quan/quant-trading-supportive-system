@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # Prefect orchestration server
+  prefect:
+    image: prefecthq/prefect:2-python3.11
+    container_name: crypto-prefect
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_URL=http://prefect:4200/api
+    volumes:
+      - prefect-data:/root/.prefect
+    networks:
+      - crypto-network
+    restart: unless-stopped
+    profiles:
+      - production
+      - development
+
+  # Streamlit UI
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-streamlit
+    command: streamlit run src/ui/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - PREFECT_API_URL=http://prefect:4200/api
+      - DATA_PATH=/app/data
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - crypto-network
+    depends_on:
+      - prefect
+    restart: unless-stopped
+    profiles:
+      - production
+      - development
+
+  # Data collector for Binance
+  collector-binance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-collector-binance
+    command: python scripts/live.py --exchange binance --config configs/streaming.yaml
+    environment:
+      - EXCHANGE=binance
+      - PREFECT_API_URL=http://prefect:4200/api
+      - DATA_PATH=/app/data
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - crypto-network
+    depends_on:
+      - prefect
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Data collector for Coinbase
+  collector-coinbase:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-collector-coinbase
+    command: python scripts/live.py --exchange coinbase --config configs/streaming.yaml
+    environment:
+      - EXCHANGE=coinbase
+      - PREFECT_API_URL=http://prefect:4200/api
+      - DATA_PATH=/app/data
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - crypto-network
+    depends_on:
+      - prefect
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Data validator (scheduled)
+  validator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-validator
+    command: python scripts/validate_data.py --continuous
+    environment:
+      - DATA_PATH=/app/data
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+      - ./logs:/app/logs
+    networks:
+      - crypto-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Prometheus monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: crypto-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - crypto-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana dashboards (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: crypto-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - crypto-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Development environment with hot-reload
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-dev
+    command: tail -f /dev/null
+    environment:
+      - PREFECT_API_URL=http://prefect:4200/api
+      - DATA_PATH=/app/data
+      - LOG_LEVEL=DEBUG
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/.venv  # Don't mount virtual env
+    networks:
+      - crypto-network
+    depends_on:
+      - prefect
+    stdin_open: true
+    tty: true
+    profiles:
+      - development
+
+networks:
+  crypto-network:
+    driver: bridge
+
+volumes:
+  prefect-data:
+  prometheus-data:
+  grafana-data:

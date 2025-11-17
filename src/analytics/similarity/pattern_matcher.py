@@ -39,6 +39,7 @@ class PatternMatcher:
         historical_data: pd.DataFrame,
         top_k: int = 20,
         features: Optional[List[str]] = None,
+        timeframe_minutes: int = 60,
     ) -> List[PatternMatch]:
         """Find similar patterns in historical data.
 
@@ -47,6 +48,7 @@ class PatternMatcher:
             historical_data: Historical data to search
             top_k: Number of top matches to return
             features: Features to use for matching
+            timeframe_minutes: Timeframe in minutes (e.g., 60 for 1h, 15 for 15m)
 
         Returns:
             List of pattern matches
@@ -59,14 +61,25 @@ class PatternMatcher:
             current_features = self._extract_features(current_data, features)
             historical_features = self._extract_features(historical_data, features)
 
-            if len(current_features) < self.window_size:
+            # Validate data size for matrix profile computation
+            min_length = max(4, self.window_size)  # Matrix profile needs at least 4 points
+            if len(current_features) < min_length:
                 logger.warning(
-                    f"Current data too short: {len(current_features)} < {self.window_size}"
+                    f"Current data too short: {len(current_features)} < {min_length}"
                 )
                 return []
 
             if len(historical_features) < self.window_size * 2:
-                logger.warning("Historical data too short for meaningful matches")
+                logger.warning(
+                    f"Historical data too short: {len(historical_features)} < {self.window_size * 2}"
+                )
+                return []
+
+            # Additional validation for stumpy requirements
+            if self.window_size >= len(historical_features):
+                logger.warning(
+                    f"Window size ({self.window_size}) must be less than data length ({len(historical_features)})"
+                )
                 return []
 
             # Normalize features
@@ -87,9 +100,9 @@ class PatternMatcher:
                 if idx + self.window_size >= len(historical_data):
                     continue
 
-                # Calculate forward returns
+                # Calculate forward returns with dynamic timeframe
                 forward_returns = self._calculate_forward_returns(
-                    historical_data, idx + self.window_size
+                    historical_data, idx + self.window_size, timeframe_minutes
                 )
 
                 matches.append(
@@ -128,6 +141,20 @@ class PatternMatcher:
         try:
             features_data = self._extract_features(data, features)
             features_norm = self._normalize(features_data)
+
+            # Validate data size before computing matrix profile
+            min_length = max(4, self.window_size * 2)
+            if len(features_norm) < min_length:
+                logger.warning(
+                    f"Data too short for motif discovery: {len(features_norm)} < {min_length}"
+                )
+                return []
+
+            if self.window_size >= len(features_norm):
+                logger.warning(
+                    f"Window size ({self.window_size}) must be less than data length ({len(features_norm)})"
+                )
+                return []
 
             # Compute matrix profile
             mp = stumpy.stump(features_norm, m=self.window_size)
@@ -223,13 +250,14 @@ class PatternMatcher:
             return normalized
 
     def _calculate_forward_returns(
-        self, df: pd.DataFrame, start_idx: int
+        self, df: pd.DataFrame, start_idx: int, timeframe_minutes: int = 60
     ) -> Dict[str, Optional[float]]:
         """Calculate forward returns from a given index.
 
         Args:
             df: DataFrame with data
             start_idx: Starting index
+            timeframe_minutes: Timeframe in minutes (e.g., 60 for 1h, 15 for 15m)
 
         Returns:
             Dictionary with forward returns
@@ -241,31 +269,45 @@ class PatternMatcher:
             "max_drawdown": None,
         }
 
+        # Validate inputs
         if start_idx >= len(df):
+            logger.warning(f"Invalid start_idx {start_idx} >= len(df) {len(df)}")
             return result
+
+        if 'close' not in df.columns:
+            logger.error("Missing 'close' column in DataFrame")
+            return result
+
+        if 'high' not in df.columns or 'low' not in df.columns:
+            logger.warning("Missing 'high' or 'low' columns, max drawdown will not be calculated")
 
         start_price = df.iloc[start_idx]["close"]
 
-        # 1 hour forward (assuming 1h timeframe)
-        if start_idx + 1 < len(df):
+        # Calculate periods for each time horizon
+        periods_1h = max(1, int(60 / timeframe_minutes))
+        periods_4h = max(1, int(240 / timeframe_minutes))
+        periods_1d = max(1, int(1440 / timeframe_minutes))
+
+        # 1 hour forward
+        if start_idx + periods_1h < len(df):
             result["forward_returns_1h"] = (
-                (df.iloc[start_idx + 1]["close"] - start_price) / start_price * 100
+                (df.iloc[start_idx + periods_1h]["close"] - start_price) / start_price * 100
             )
 
         # 4 hours forward
-        if start_idx + 4 < len(df):
+        if start_idx + periods_4h < len(df):
             result["forward_returns_4h"] = (
-                (df.iloc[start_idx + 4]["close"] - start_price) / start_price * 100
+                (df.iloc[start_idx + periods_4h]["close"] - start_price) / start_price * 100
             )
 
         # 1 day forward (24 hours)
-        if start_idx + 24 < len(df):
+        if start_idx + periods_1d < len(df):
             result["forward_returns_1d"] = (
-                (df.iloc[start_idx + 24]["close"] - start_price) / start_price * 100
+                (df.iloc[start_idx + periods_1d]["close"] - start_price) / start_price * 100
             )
 
             # Calculate max drawdown in next 24 hours
-            future_prices = df.iloc[start_idx : start_idx + 24]["close"]
+            future_prices = df.iloc[start_idx : start_idx + periods_1d]["close"]
             running_max = future_prices.expanding().max()
             drawdown = ((future_prices - running_max) / running_max * 100).min()
             result["max_drawdown"] = float(drawdown)

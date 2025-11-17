@@ -1,11 +1,16 @@
 """Binance WebSocket implementation."""
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 from loguru import logger
 
 from src.data.stream.websocket_manager import WebSocketManager
+from src.data.stream.validation import (
+    validate_kline_message,
+    validate_ticker_message,
+    validate_depth_message,
+)
 
 
 class BinanceWebSocket(WebSocketManager):
@@ -98,78 +103,102 @@ class BinanceWebSocket(WebSocketManager):
         await self.subscribe([channel])
 
     async def _handle_kline(self, data: Dict[str, Any]) -> None:
-        """Handle kline message.
+        """Handle kline message with validation.
 
         Args:
             data: Kline data
         """
-        k = data.get("k", {})
+        try:
+            # Validate message structure
+            validated = validate_kline_message(data)
 
-        if not k.get("x"):  # Only process closed candles
-            return
+            k = validated.k
 
-        candle = {
-            "timestamp": pd.to_datetime(k["t"], unit="ms"),
-            "symbol": data.get("s"),
-            "timeframe": k.get("i"),
-            "open": float(k.get("o", 0)),
-            "high": float(k.get("h", 0)),
-            "low": float(k.get("l", 0)),
-            "close": float(k.get("c", 0)),
-            "volume": float(k.get("v", 0)),
-            "quote_volume": float(k.get("q", 0)),
-            "trades_count": int(k.get("n", 0)),
-            "taker_buy_volume": float(k.get("V", 0)),
-            "taker_buy_quote_volume": float(k.get("Q", 0)),
-        }
+            if not k.x:  # Only process closed candles
+                return
 
-        # Call registered callback
-        callback = self.callbacks.get("kline")
-        if callback:
-            await callback(candle)
-        else:
-            logger.debug(f"Kline received: {candle}")
+            candle = {
+                "timestamp": pd.to_datetime(k.t, unit="ms", utc=True),
+                "symbol": validated.s,
+                "timeframe": k.i,
+                "open": float(k.o),
+                "high": float(k.h),
+                "low": float(k.l),
+                "close": float(k.c),
+                "volume": float(k.v),
+                "quote_volume": float(k.q),
+                "trades_count": k.n,
+                "taker_buy_volume": float(k.V),
+                "taker_buy_quote_volume": float(k.Q),
+            }
+
+            # Call registered callback
+            callback = self.callbacks.get("kline")
+            if callback:
+                await callback(candle)
+            else:
+                logger.debug(f"Kline received: {candle}")
+
+        except ValueError as e:
+            logger.error(f"Invalid kline message: {e}")
+            logger.debug(f"Raw data: {data}")
 
     async def _handle_ticker(self, data: Dict[str, Any]) -> None:
-        """Handle ticker message.
+        """Handle ticker message with validation.
 
         Args:
             data: Ticker data
         """
-        ticker = {
-            "symbol": data.get("s"),
-            "price_change": float(data.get("p", 0)),
-            "price_change_percent": float(data.get("P", 0)),
-            "weighted_avg_price": float(data.get("w", 0)),
-            "last_price": float(data.get("c", 0)),
-            "last_qty": float(data.get("Q", 0)),
-            "bid": float(data.get("b", 0)),
-            "ask": float(data.get("a", 0)),
-            "open": float(data.get("o", 0)),
-            "high": float(data.get("h", 0)),
-            "low": float(data.get("l", 0)),
-            "volume": float(data.get("v", 0)),
-            "quote_volume": float(data.get("q", 0)),
-            "timestamp": pd.to_datetime(data.get("E"), unit="ms"),
-        }
+        try:
+            # Validate message structure
+            validated = validate_ticker_message(data)
 
-        callback = self.callbacks.get("ticker")
-        if callback:
-            await callback(ticker)
+            ticker = {
+                "symbol": validated.s,
+                "price_change": float(validated.p),
+                "price_change_percent": float(validated.P),
+                "weighted_avg_price": float(validated.w),
+                "last_price": float(validated.c),
+                "last_qty": float(validated.Q),
+                "bid": float(validated.b),
+                "ask": float(validated.a),
+                "open": float(validated.o),
+                "high": float(validated.h),
+                "low": float(validated.l),
+                "volume": float(validated.v),
+                "quote_volume": float(validated.q),
+                "timestamp": pd.to_datetime(validated.E, unit="ms", utc=True),
+            }
+
+            callback = self.callbacks.get("ticker")
+            if callback:
+                await callback(ticker)
+
+        except ValueError as e:
+            logger.error(f"Invalid ticker message: {e}")
+            logger.debug(f"Raw data: {data}")
 
     async def _handle_depth(self, data: Dict[str, Any]) -> None:
-        """Handle depth update message.
+        """Handle depth update message with validation.
 
         Args:
             data: Depth data
         """
-        depth = {
-            "symbol": data.get("s"),
-            "bids": [[float(p), float(v)] for p, v in data.get("b", [])],
-            "asks": [[float(p), float(v)] for p, v in data.get("a", [])],
-            "timestamp": pd.to_datetime(data.get("E"), unit="ms"),
-        }
+        try:
+            # Validate message structure
+            validated = validate_depth_message(data)
 
-        callback = self.callbacks.get("depth")
-        if callback:
-            await callback(depth)
+            depth = {
+                "symbol": validated.s,
+                "bids": [[float(p), float(v)] for p, v in validated.b],
+                "asks": [[float(p), float(v)] for p, v in validated.a],
+                "timestamp": pd.to_datetime(validated.E, unit="ms", utc=True),
+            }
+
+            callback = self.callbacks.get("depth")
+            if callback:
+                await callback(depth)
+
+        except ValueError as e:
+            logger.error(f"Invalid depth update message: {e}")
+            logger.debug(f"Raw data: {data}")

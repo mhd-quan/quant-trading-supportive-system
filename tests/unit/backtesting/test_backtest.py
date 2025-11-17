@@ -3,7 +3,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from src.backtesting.engines.simple_backtest import SimpleBacktestEngine
 from src.strategies.base import Signal, SignalType
 

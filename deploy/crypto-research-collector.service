@@ -1,0 +1,37 @@
+[Unit]
+Description=Crypto Research Platform - Data Collector
+After=network.target prefect.service
+Requires=prefect.service
+
+[Service]
+Type=simple
+User=crypto-research
+Group=crypto-research
+WorkingDirectory=/opt/crypto-research
+Environment="PATH=/opt/crypto-research/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/crypto-research/env
+
+ExecStart=/opt/crypto-research/.venv/bin/python scripts/live.py --config configs/production.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=30
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/crypto-research /var/log/crypto-research
+
+# Resource limits
+MemoryLimit=4G
+CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-research-collector
+
+[Install]
+WantedBy=multi-user.target

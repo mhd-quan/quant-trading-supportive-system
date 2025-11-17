@@ -1,0 +1,65 @@
+# Prometheus configuration for Crypto Research Platform
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'crypto-research'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape application metrics
+  - job_name: 'crypto-research'
+    static_configs:
+      - targets: ['streamlit:8080']
+        labels:
+          service: 'ui'
+      - targets: ['collector-binance:8080']
+        labels:
+          service: 'collector'
+          exchange: 'binance'
+      - targets: ['collector-coinbase:8080']
+        labels:
+          service: 'collector'
+          exchange: 'coinbase'
+      - targets: ['validator:8080']
+        labels:
+          service: 'validator'
+
+  # Scrape Prefect metrics
+  - job_name: 'prefect'
+    static_configs:
+      - targets: ['prefect:4200']
+        labels:
+          service: 'orchestration'
+
+  # Node exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'crypto-server-1'
+
+  # cAdvisor for container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          instance: 'crypto-server-1'

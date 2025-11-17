@@ -1,0 +1,35 @@
+[Unit]
+Description=Crypto Research Platform - Data Validator
+After=network.target
+
+[Service]
+Type=simple
+User=crypto-research
+Group=crypto-research
+WorkingDirectory=/opt/crypto-research
+Environment="PATH=/opt/crypto-research/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/crypto-research/env
+
+ExecStart=/opt/crypto-research/.venv/bin/python scripts/validate_data.py --continuous --interval 3600
+Restart=always
+RestartSec=60
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/crypto-research /var/log/crypto-research
+
+# Resource limits
+MemoryLimit=2G
+CPUQuota=100%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-research-validator
+
+[Install]
+WantedBy=multi-user.target
