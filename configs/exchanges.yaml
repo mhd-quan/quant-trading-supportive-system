@@ -1,0 +1,164 @@
+# Exchange Configuration
+# Define exchanges, supported symbols, and connection parameters
+
+exchanges:
+  binance:
+    enabled: true
+    type: spot
+    ccxt_id: binance
+    rate_limits:
+      rest_requests_per_second: 10
+      rest_requests_per_minute: 1200
+      weight_per_minute: 6000
+    websocket:
+      endpoint: wss://stream.binance.com:9443/ws
+      max_subscriptions: 200
+    symbols:
+      - BTC/USDT
+      - ETH/USDT
+      - BNB/USDT
+      - SOL/USDT
+      - XRP/USDT
+      - ADA/USDT
+      - AVAX/USDT
+      - MATIC/USDT
+      - DOT/USDT
+      - LINK/USDT
+    timeframes:
+      - 1m
+      - 3m
+      - 5m
+      - 15m
+      - 30m
+      - 1h
+      - 2h
+      - 4h
+      - 6h
+      - 12h
+      - 1d
+      - 3d
+      - 1w
+    historical_data:
+      max_days_per_request: 500
+      start_date: "2019-01-01"
+
+  coinbase:
+    enabled: true
+    type: spot
+    ccxt_id: coinbasepro
+    rate_limits:
+      rest_requests_per_second: 3
+      rest_requests_per_minute: 15
+    websocket:
+      endpoint: wss://ws-feed.exchange.coinbase.com
+      max_subscriptions: 100
+    symbols:
+      - BTC/USD
+      - ETH/USD
+      - SOL/USD
+    timeframes:
+      - 1m
+      - 5m
+      - 15m
+      - 1h
+      - 6h
+      - 1d
+    historical_data:
+      max_days_per_request: 300
+      start_date: "2020-01-01"
+
+  kraken:
+    enabled: false
+    type: spot
+    ccxt_id: kraken
+    rate_limits:
+      rest_requests_per_second: 1
+      rest_requests_per_minute: 15
+    websocket:
+      endpoint: wss://ws.kraken.com
+      max_subscriptions: 50
+    symbols:
+      - BTC/USD
+      - ETH/USD
+    timeframes:
+      - 1m
+      - 5m
+      - 15m
+      - 1h
+      - 4h
+      - 1d
+    historical_data:
+      max_days_per_request: 720
+      start_date: "2018-01-01"
+
+  okx:
+    enabled: false
+    type: spot
+    ccxt_id: okx
+    rate_limits:
+      rest_requests_per_second: 20
+      rest_requests_per_minute: 60
+    websocket:
+      endpoint: wss://ws.okx.com:8443/ws/v5/public
+      max_subscriptions: 100
+    symbols:
+      - BTC/USDT
+      - ETH/USDT
+    timeframes:
+      - 1m
+      - 5m
+      - 15m
+      - 1h
+      - 4h
+      - 1d
+    historical_data:
+      max_days_per_request: 100
+      start_date: "2020-01-01"
+
+  bybit:
+    enabled: false
+    type: spot
+    ccxt_id: bybit
+    rate_limits:
+      rest_requests_per_second: 10
+      rest_requests_per_minute: 120
+    websocket:
+      endpoint: wss://stream.bybit.com/v5/public/spot
+      max_subscriptions: 100
+    symbols:
+      - BTC/USDT
+      - ETH/USDT
+    timeframes:
+      - 1m
+      - 5m
+      - 15m
+      - 1h
+      - 4h
+      - 1d
+    historical_data:
+      max_days_per_request: 200
+      start_date: "2020-01-01"
+
+# Global settings
+global:
+  default_exchange: binance
+  retry_config:
+    max_retries: 3
+    initial_delay_seconds: 1
+    max_delay_seconds: 60
+    exponential_base: 2
+  data_validation:
+    enable_duplicate_check: true
+    enable_gap_detection: true
+    enable_anomaly_detection: true
+    max_gap_minutes: 5
+    max_sigma_deviation: 10
+  storage:
+    batch_size: 1000
+    compression: snappy
+    partition_by:
+      - exchange
+      - symbol
+      - timeframe
+      - year
+      - month
