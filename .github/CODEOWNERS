@@ -1,0 +1,23 @@
+# Code owners for the crypto research platform
+
+# Default owners for everything in the repo
+*       @crypto-research-team
+
+# Data layer
+/src/data/                      @data-team
+/configs/exchanges.yaml         @data-team
+
+# Strategy implementations
+/src/strategies/                @quant-team
+/configs/strategies.yaml        @quant-team
+
+# Analytics and patterns
+/src/analytics/                 @analytics-team
+/configs/indicators.yaml        @analytics-team
+
+# UI and visualization
+/src/ui/                        @frontend-team
+
+# Documentation
+/*.md                           @docs-team
+/docs/                          @docs-team

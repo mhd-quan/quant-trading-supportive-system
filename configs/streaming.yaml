@@ -1,0 +1,67 @@
+# Live Streaming Configuration
+
+# Streaming targets
+streams:
+  - exchange: binance
+    symbol: BTC/USDT
+    timeframes: [1m, 5m, 15m, 1h]
+    enabled: true
+  - exchange: binance
+    symbol: ETH/USDT
+    timeframes: [1m, 5m, 15m, 1h]
+    enabled: true
+  - exchange: binance
+    symbol: SOL/USDT
+    timeframes: [5m, 15m, 1h]
+    enabled: true
+  - exchange: coinbase
+    symbol: BTC/USD
+    timeframes: [1m, 5m, 1h]
+    enabled: false
+
+# WebSocket settings
+websocket:
+  ping_interval_seconds: 30
+  ping_timeout_seconds: 10
+  close_timeout_seconds: 5
+  max_message_size_mb: 10
+  compression: true
+
+# Reconnection strategy
+reconnection:
+  enabled: true
+  max_retries: -1  # Infinite
+  initial_delay_seconds: 1
+  max_delay_seconds: 300
+  exponential_base: 2
+  jitter_percent: 10
+
+# Data buffer
+buffer:
+  max_size_records: 1000
+  flush_interval_seconds: 10
+  flush_on_candle_close: true
+
+# Data validation
+validation:
+  enable_timestamp_check: true
+  enable_ohlc_validation: true
+  enable_duplicate_detection: true
+  alert_on_gap: true
+  max_gap_seconds: 120
+
+# Storage
+storage:
+  write_to_duckdb: true
+  write_to_parquet: true
+  batch_insert_size: 100
+  async_writes: true
+
+# Monitoring
+monitoring:
+  enable_metrics: true
+  metrics_interval_seconds: 60
+  log_message_count: true
+  log_latency: true
+  alert_on_disconnect: true
+  alert_on_high_latency_ms: 1000

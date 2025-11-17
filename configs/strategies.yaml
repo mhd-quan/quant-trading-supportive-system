@@ -1,0 +1,247 @@
+# Strategy Configuration
+# Parameters for each strategy implementation
+
+scalping:
+  vwap_pullback:
+    enabled: true
+    description: "Entry on VWAP touch with momentum confirmation"
+    timeframes: [1m, 3m, 5m]
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      confirmation_ema_period: 9
+      volume_threshold_zscore: 2.0
+      min_vwap_distance_percent: 0.1
+      max_vwap_distance_percent: 0.5
+      momentum_lookback: 20
+      entry_type: limit  # market, limit
+      offset_from_vwap_percent: 0.05
+    risk_management:
+      max_risk_percent: 0.5
+      stop_loss_atr_multiple: 1.5
+      take_profit_atr_multiple: 3.0
+      trailing_stop_activation_percent: 1.0
+      trailing_stop_distance_percent: 0.5
+    filters:
+      min_volume_24h_usd: 100000000
+      max_spread_percent: 0.1
+      market_hours_only: false
+
+  liquidity_sweep:
+    enabled: true
+    description: "Detect stop hunts via volume spike and immediate reversal"
+    timeframes: [1m, 5m]
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      swing_lookback: 20
+      volume_spike_threshold: 3.0  # sigma
+      reversal_candles: 3
+      sweep_distance_atr: 0.5
+      confirmation_percentage: 0.3
+    risk_management:
+      max_risk_percent: 1.0
+      stop_loss_atr_multiple: 2.0
+      take_profit_ratio: 2.5
+    filters:
+      min_atr_value: 0.0001
+      session_filter: ["london", "newyork"]
+
+  session_range:
+    enabled: true
+    description: "NY/London open range breakouts with volatility filter"
+    timeframes: [5m, 15m]
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      sessions:
+        london:
+          open_utc: "08:00"
+          range_period_minutes: 60
+        newyork:
+          open_utc: "13:00"
+          range_period_minutes: 60
+      breakout_confirmation_candles: 2
+      range_extension_threshold: 1.5
+      atr_filter_period: 14
+      min_atr_percentile: 50
+    risk_management:
+      max_risk_percent: 1.0
+      stop_loss_location: range_opposite
+      take_profit_atr_multiple: 2.0
+    filters:
+      min_range_size_atr: 0.3
+
+quant:
+  momentum:
+    enabled: true
+    description: "Dual moving average with KAMA confirmation"
+    timeframes: [15m, 1h, 4h]
+    symbols: [BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT]
+    parameters:
+      fast_ma_period: 20
+      slow_ma_period: 50
+      ma_type: ema  # sma, ema, wma, dema
+      kama_period: 10
+      kama_fast: 2
+      kama_slow: 30
+      min_kama_efficiency: 0.3
+      atr_period: 14
+      atr_trailing_multiplier: 2.5
+    risk_management:
+      max_risk_percent: 2.0
+      stop_loss_atr_multiple: 2.0
+      take_profit_ratio: 3.0
+      position_scaling: true
+      scale_in_levels: [0.5, 0.3, 0.2]
+    filters:
+      min_adx: 25
+      trend_confirmation_required: true
+
+  mean_reversion:
+    enabled: true
+    description: "Bollinger Band squeeze with RSI extremes"
+    timeframes: [15m, 1h, 4h]
+    symbols: [BTC/USDT, ETH/USDT, BNB/USDT]
+    parameters:
+      bb_period: 20
+      bb_std_dev: 2.0
+      bb_squeeze_threshold: 0.7  # Historical percentile
+      rsi_period: 2
+      rsi_oversold: 10
+      rsi_overbought: 90
+      entry_on_band_touch: true
+      confirmation_candles: 1
+    risk_management:
+      max_risk_percent: 1.5
+      stop_loss_percent: 2.0
+      take_profit_target: middle_band
+      max_holding_bars: 50
+    filters:
+      volume_confirmation: true
+      volume_ma_period: 20
+      min_volume_ratio: 1.2
+
+  breakout:
+    enabled: true
+    description: "Donchian channel breach with volume confirmation"
+    timeframes: [1h, 4h, 1d]
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      donchian_period: 20
+      breakout_confirmation_percent: 0.5
+      volume_threshold_ratio: 1.5
+      volume_ma_period: 20
+      retest_entry_enabled: true
+      retest_max_distance_percent: 2.0
+    risk_management:
+      max_risk_percent: 2.0
+      stop_loss_location: donchian_opposite
+      take_profit_atr_multiple: 3.0
+      pyramid_enabled: true
+      pyramid_max_positions: 3
+    filters:
+      consolidation_period_required: 10
+      min_consolidation_ratio: 0.5
+
+ict:
+  structure_trading:
+    enabled: true
+    description: "Multi-timeframe ICT structure analysis"
+    timeframes:
+      htf: [4h, 1d]  # Higher timeframe for bias
+      ltf: [5m, 15m]  # Lower timeframe for entry
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      structure:
+        bos_confirmation_candles: 2
+        mss_lookback_swings: 3
+        swing_detection_atr_multiple: 1.0
+      fair_value_gaps:
+        min_gap_atr_multiple: 0.5
+        max_gap_age_bars: 100
+        partial_fill_percent: 50
+      order_blocks:
+        imbalance_ratio: 3.0
+        max_age_bars: 50
+        zone_extension_percent: 20
+      liquidity_pools:
+        swing_touches_required: 2
+        liquidity_grab_confirmation: true
+    risk_management:
+      max_risk_percent: 1.5
+      stop_loss_location: order_block_invalidation
+      take_profit_targets:
+        - next_liquidity_pool
+        - next_fair_value_gap
+        - next_order_block
+      partial_take_profit_levels: [50, 30, 20]
+    filters:
+      htf_trend_alignment_required: true
+      session_filter: ["london", "newyork"]
+
+  liquidity_grab:
+    enabled: true
+    description: "Trade liquidity sweeps and reversals"
+    timeframes: [5m, 15m, 1h]
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      swing_lookback: 50
+      liquidity_zone_extension_pips: 5
+      sweep_confirmation_candles: 3
+      volume_spike_required: true
+      volume_threshold_sigma: 2.5
+      displacement_required: true
+      min_displacement_percent: 1.0
+    risk_management:
+      max_risk_percent: 2.0
+      stop_loss_pips: 20
+      risk_reward_ratio: 2.0
+    filters:
+      time_of_day:
+        - "08:00-12:00"  # London
+        - "13:00-17:00"  # New York
+
+  optimal_trade_entry:
+    enabled: true
+    description: "OTE (Optimal Trade Entry) 62-79% Fibonacci retracement"
+    timeframes: [15m, 1h, 4h]
+    symbols: [BTC/USDT, ETH/USDT]
+    parameters:
+      impulse_detection:
+        min_candles: 3
+        max_candles: 10
+        min_percent_move: 1.5
+      fib_levels:
+        entry_min: 0.62
+        entry_max: 0.79
+        stop_level: 0.90
+      entry_confirmation:
+        type: market_structure  # limit_order, market_structure, liquidity_grab
+        max_wait_bars: 20
+    risk_management:
+      max_risk_percent: 1.5
+      stop_loss_fib_level: 0.90
+      take_profit_targets: [1.0, 1.27, 1.62]
+      partial_exits: [40, 30, 30]
+    filters:
+      htf_alignment_required: true
+      htf_timeframe: 4h
+
+# Global strategy settings
+global:
+  backtesting:
+    initial_capital: 10000
+    commission: 0.001
+    slippage: 0.0005
+    leverage: 1.0
+    compounding: false
+  optimization:
+    method: walk_forward
+    in_sample_ratio: 0.7
+    out_sample_periods: 5
+    parameter_combinations_limit: 10000
+  correlation:
+    max_correlation_threshold: 0.7
+    correlation_window_bars: 100
+  portfolio:
+    max_positions: 5
+    max_risk_portfolio: 0.06
+    allocation_method: risk_parity

@@ -1,0 +1,32 @@
+name: Scheduled Data Validation
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  validate-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+
+      - name: Validate data integrity
+        run: |
+          python scripts/validate_data.py
+        continue-on-error: true
+
+      - name: Generate report
+        run: |
+          echo "Data validation completed"
