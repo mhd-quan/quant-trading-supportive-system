@@ -1,7 +1,7 @@
 """Binance WebSocket implementation."""
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 from loguru import logger
 

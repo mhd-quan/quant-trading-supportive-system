@@ -2,7 +2,7 @@
 
 import asyncio
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import sys
 import json
@@ -40,7 +40,7 @@ class BackfillCheckpoint:
             "timeframe": timeframe,
             "last_timestamp": last_timestamp.isoformat(),
             "total_records": total_records,
-            "saved_at": datetime.utcnow().isoformat(),
+            "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         path = self.get_checkpoint_path(exchange, symbol, timeframe)
         with open(path, "w") as f:
@@ -105,7 +105,7 @@ async def backfill_data(
 
     try:
         # Calculate date range
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
 
         # Check for checkpoint

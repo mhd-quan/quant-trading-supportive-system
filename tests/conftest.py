@@ -1,7 +1,7 @@
 """Shared pytest fixtures for the crypto research platform."""
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock

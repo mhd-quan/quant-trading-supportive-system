@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timezone
 import pandas as pd
 from dataclasses import dataclass
 from enum import Enum

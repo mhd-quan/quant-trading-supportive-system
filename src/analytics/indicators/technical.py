@@ -11,16 +11,13 @@ from functools import lru_cache
 class TechnicalIndicators:
     """Calculate technical indicators on OHLCV data.
 
-    Refactored to split indicators into focused methods and add caching
-    to avoid redundant calculations.
+    All methods are static to maintain backward compatibility with existing callers.
+    Refactored to split indicators into focused methods for better organization.
     """
 
-    def __init__(self):
-        """Initialize TechnicalIndicators with cache."""
-        self._cache: Dict[str, pd.Series] = {}
-
+    @staticmethod
     def add_moving_averages(
-        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add moving average indicators.
 
@@ -48,8 +45,9 @@ class TechnicalIndicators:
         logger.debug(f"Added {len(sma_periods)} SMA and {len(ema_periods)} EMA indicators")
         return df
 
+    @staticmethod
     def add_momentum_indicators(
-        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add momentum indicators (RSI, MACD).
 
@@ -76,8 +74,9 @@ class TechnicalIndicators:
         logger.debug("Added momentum indicators (RSI, MACD)")
         return df
 
+    @staticmethod
     def add_volatility_indicators(
-        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add volatility indicators (ATR, Bollinger Bands).
 
@@ -108,8 +107,9 @@ class TechnicalIndicators:
         logger.debug("Added volatility indicators (ATR, Bollinger Bands)")
         return df
 
+    @staticmethod
     def add_volume_indicators(
-        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add volume-based indicators.
 
@@ -139,8 +139,9 @@ class TechnicalIndicators:
         logger.debug("Added volume indicators (VWAP, Volume SMA)")
         return df
 
+    @staticmethod
     def add_trend_indicators(
-        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add trend indicators (ADX).
 
@@ -162,12 +163,13 @@ class TechnicalIndicators:
         logger.debug("Added trend indicators (ADX)")
         return df
 
+    @staticmethod
     def add_all_indicators(
-        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add all common technical indicators to DataFrame.
 
-        This method now delegates to focused indicator methods for better
+        This method delegates to focused indicator methods for better
         organization and maintainability.
 
         Args:
@@ -180,11 +182,11 @@ class TechnicalIndicators:
         df = df.copy()
 
         # Add indicators by category
-        df = self.add_moving_averages(df, config)
-        df = self.add_momentum_indicators(df, config)
-        df = self.add_volatility_indicators(df, config)
-        df = self.add_volume_indicators(df, config)
-        df = self.add_trend_indicators(df, config)
+        df = TechnicalIndicators.add_moving_averages(df, config)
+        df = TechnicalIndicators.add_momentum_indicators(df, config)
+        df = TechnicalIndicators.add_volatility_indicators(df, config)
+        df = TechnicalIndicators.add_volume_indicators(df, config)
+        df = TechnicalIndicators.add_trend_indicators(df, config)
 
         indicator_count = len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'timestamp']])
         logger.debug(f"Added {indicator_count} total indicators")

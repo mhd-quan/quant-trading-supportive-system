@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import yaml
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -143,7 +143,7 @@ class LiveStreamManager:
             reason: Reason for failure
         """
         try:
-            timestamp = datetime.utcnow().isoformat().replace(":", "-")
+            timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-")
             filename = f"dlq_{timestamp}.json"
             filepath = self.dlq_path / filename
 

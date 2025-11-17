@@ -1,7 +1,7 @@
 """Integration tests for data pipeline components."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 from pathlib import Path
 
@@ -25,8 +25,8 @@ def test_lake_path(tmp_path):
 def sample_ohlcv_data():
     """Generate sample OHLCV data for testing."""
     timestamps = pd.date_range(
-        start=datetime.utcnow() - timedelta(days=7),
-        end=datetime.utcnow(),
+        start=datetime.now(timezone.utc) - timedelta(days=7),
+        end=datetime.now(timezone.utc),
         freq="1H"
     )
 

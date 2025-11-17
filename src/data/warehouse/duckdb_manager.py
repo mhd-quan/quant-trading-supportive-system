@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import duckdb
 from loguru import logger
@@ -445,7 +445,7 @@ class DuckDBManager:
             "invalid_ohlc_count": invalid_ohlc,
             "duplicate_count": duplicates,
             "gap_count": len(gaps_df),
-            "validation_timestamp": datetime.utcnow(),
+            "validation_timestamp": datetime.now(timezone.utc),
         }
 
     @staticmethod

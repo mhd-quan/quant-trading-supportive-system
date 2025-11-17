@@ -269,8 +269,17 @@ class PatternMatcher:
             "max_drawdown": None,
         }
 
+        # Validate inputs
         if start_idx >= len(df):
+            logger.warning(f"Invalid start_idx {start_idx} >= len(df) {len(df)}")
             return result
+
+        if 'close' not in df.columns:
+            logger.error("Missing 'close' column in DataFrame")
+            return result
+
+        if 'high' not in df.columns or 'low' not in df.columns:
+            logger.warning("Missing 'high' or 'low' columns, max drawdown will not be calculated")
 
         start_price = df.iloc[start_idx]["close"]
 

@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import pandas as pd
 import ccxt.async_support as ccxt
 from loguru import logger

@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 from loguru import logger
@@ -65,6 +65,33 @@ class ICTPatterns:
     """Detect ICT trading patterns and market structure."""
 
     @staticmethod
+    def _validate_dataframe(df: pd.DataFrame, required_cols: List[str], min_rows: int = 3) -> bool:
+        """Validate DataFrame for pattern detection.
+
+        Args:
+            df: DataFrame to validate
+            required_cols: List of required column names
+            min_rows: Minimum number of rows required
+
+        Returns:
+            True if valid, False otherwise
+        """
+        if df.empty:
+            logger.warning("Empty DataFrame provided")
+            return False
+
+        if len(df) < min_rows:
+            logger.warning(f"Insufficient data: {len(df)} rows, need >= {min_rows}")
+            return False
+
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            logger.error(f"Missing required columns: {missing_cols}")
+            return False
+
+        return True
+
+    @staticmethod
     def detect_fair_value_gaps(
         df: pd.DataFrame, min_gap_atr_multiple: float = 0.5
     ) -> List[FairValueGap]:
@@ -80,6 +107,10 @@ class ICTPatterns:
         Returns:
             List of Fair Value Gaps
         """
+        # Validate input
+        if not ICTPatterns._validate_dataframe(df, ['high', 'low', 'close', 'timestamp'], min_rows=14):
+            return []
+
         # Calculate ATR for threshold
         high_low = df["high"] - df["low"]
         high_close = abs(df["high"] - df["close"].shift(1))
@@ -150,6 +181,10 @@ class ICTPatterns:
         Returns:
             List of Order Blocks
         """
+        # Validate input
+        if not ICTPatterns._validate_dataframe(df, ['high', 'low', 'open', 'close', 'timestamp'], min_rows=3):
+            return []
+
         order_blocks = []
 
         for i in range(1, len(df) - 1):
@@ -218,6 +253,11 @@ class ICTPatterns:
         Returns:
             List of structure points
         """
+        # Validate input
+        min_rows = 2 * swing_lookback + 1
+        if not ICTPatterns._validate_dataframe(df, ['high', 'low', 'timestamp'], min_rows=min_rows):
+            return []
+
         structure_points = []
 
         for i in range(swing_lookback, len(df) - swing_lookback):
@@ -272,6 +312,14 @@ class ICTPatterns:
         Returns:
             List of liquidity pools
         """
+        # Validate input
+        if not ICTPatterns._validate_dataframe(df, ['close'], min_rows=1):
+            return []
+
+        if not structure_points:
+            logger.warning("No structure points provided for liquidity pool detection")
+            return []
+
         # Group nearby structure points
         tolerance = df["close"].std() * 0.01  # 1% of price std dev
 

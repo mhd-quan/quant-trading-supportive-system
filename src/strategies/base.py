@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import pandas as pd
 
@@ -203,10 +203,12 @@ class BaseStrategy(ABC):
             vol_mean = df["volume"].iloc[-30:].mean()
             vol_std = df["volume"].iloc[-30:].std()
             recent_vol = df["volume"].iloc[-10:].mean()
-            volume_score = (
-                (recent_vol - vol_mean) / vol_std if vol_std > 0 else 0
-            )
-            volume_score = max(0, min(volume_score, 3)) / 3  # Normalize 0-1
+            # Check both std and mean to avoid NaN values
+            if vol_std > 0 and vol_mean > 0:
+                volume_score = (recent_vol - vol_mean) / vol_std
+                volume_score = max(0, min(volume_score, 3)) / 3  # Normalize 0-1
+            else:
+                volume_score = 0
 
             # Slippage penalty (estimate from spread)
             spread = (df["high"] - df["low"]).iloc[-20:].mean()
