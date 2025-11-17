@@ -1,23 +1,37 @@
 # Code owners for the crypto research platform
+# Update these with actual GitHub usernames or team handles
 
 # Default owners for everything in the repo
-*       @crypto-research-team
+*       @mhd-quan
 
 # Data layer
-/src/data/                      @data-team
-/configs/exchanges.yaml         @data-team
+/src/data/                      @mhd-quan
+/configs/exchanges.yaml         @mhd-quan
 
 # Strategy implementations
-/src/strategies/                @quant-team
-/configs/strategies.yaml        @quant-team
+/src/strategies/                @mhd-quan
+/configs/strategies.yaml        @mhd-quan
 
 # Analytics and patterns
-/src/analytics/                 @analytics-team
-/configs/indicators.yaml        @analytics-team
+/src/analytics/                 @mhd-quan
+/configs/indicators.yaml        @mhd-quan
 
 # UI and visualization
-/src/ui/                        @frontend-team
+/src/ui/                        @mhd-quan
+
+# Infrastructure and deployment
+/deploy/                        @mhd-quan
+/docker-compose.yml             @mhd-quan
+/.github/workflows/             @mhd-quan
+
+# Testing
+/tests/                         @mhd-quan
+/tests/integration/             @mhd-quan
+
+# Configuration
+/configs/                       @mhd-quan
+/.env.example                   @mhd-quan
 
 # Documentation
-/*.md                           @docs-team
-/docs/                          @docs-team
+/*.md                           @mhd-quan
+/docs/                          @mhd-quan

@@ -95,8 +95,8 @@ class ICTPatterns:
                 continue
 
             # Bullish FVG: gap between candle i-2 high and candle i low
-            gap_low_bull = max(df.iloc[i - 2]["high"], df.iloc[i]["high"])
-            gap_high_bull = min(df.iloc[i - 2]["low"], df.iloc[i]["low"])
+            gap_low_bull = df.iloc[i - 2]["high"]
+            gap_high_bull = df.iloc[i]["low"]
 
             if gap_low_bull < gap_high_bull:  # Bullish gap exists
                 gap_size = gap_high_bull - gap_low_bull
@@ -114,8 +114,8 @@ class ICTPatterns:
                     )
 
             # Bearish FVG: gap between candle i-2 low and candle i high
-            gap_high_bear = min(df.iloc[i - 2]["low"], df.iloc[i]["low"])
-            gap_low_bear = max(df.iloc[i - 2]["high"], df.iloc[i]["high"])
+            gap_high_bear = df.iloc[i - 2]["low"]
+            gap_low_bear = df.iloc[i]["high"]
 
             if gap_low_bear < gap_high_bear:  # Bearish gap exists
                 gap_size = gap_high_bear - gap_low_bear

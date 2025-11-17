@@ -35,30 +35,33 @@ class WebSocketManager(ABC):
         self.connected = False
         self.callbacks: Dict[str, Callable] = {}
         self._reconnect_delay = 1
+        self._connection_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """Establish WebSocket connection."""
-        try:
-            self.ws = await websockets.connect(
-                self.url,
-                ping_interval=self.ping_interval,
-                ping_timeout=self.ping_timeout,
-            )
-            self.connected = True
-            self._reconnect_delay = 1
-            logger.info(f"Connected to WebSocket: {self.url}")
-            await self.on_connect()
-        except Exception as e:
-            logger.error(f"Connection error: {e}")
-            self.connected = False
-            raise
+        async with self._connection_lock:
+            try:
+                self.ws = await websockets.connect(
+                    self.url,
+                    ping_interval=self.ping_interval,
+                    ping_timeout=self.ping_timeout,
+                )
+                self.connected = True
+                self._reconnect_delay = 1
+                logger.info(f"Connected to WebSocket: {self.url}")
+                await self.on_connect()
+            except Exception as e:
+                logger.error(f"Connection error: {e}")
+                self.connected = False
+                raise
 
     async def disconnect(self) -> None:
         """Close WebSocket connection."""
-        if self.ws:
-            await self.ws.close()
-            self.connected = False
-            logger.info("WebSocket disconnected")
+        async with self._connection_lock:
+            if self.ws:
+                await self.ws.close()
+                self.connected = False
+                logger.info("WebSocket disconnected")
 
     async def reconnect_with_backoff(self) -> None:
         """Reconnect with exponential backoff."""
@@ -95,7 +98,11 @@ class WebSocketManager(ABC):
         """Main receive loop with auto-reconnection."""
         while True:
             try:
-                if not self.connected:
+                # Check connection status with lock
+                async with self._connection_lock:
+                    is_connected = self.connected
+
+                if not is_connected:
                     await self.reconnect_with_backoff()
 
                 async for message in self.ws:
@@ -109,11 +116,13 @@ class WebSocketManager(ABC):
 
             except websockets.ConnectionClosed:
                 logger.warning("WebSocket connection closed, reconnecting...")
-                self.connected = False
+                async with self._connection_lock:
+                    self.connected = False
                 await self.reconnect_with_backoff()
             except Exception as e:
                 logger.error(f"Receive loop error: {e}")
-                self.connected = False
+                async with self._connection_lock:
+                    self.connected = False
                 await asyncio.sleep(1)
 
     def register_callback(self, event_type: str, callback: Callable) -> None:

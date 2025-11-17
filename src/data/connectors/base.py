@@ -2,10 +2,11 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 from dataclasses import dataclass
 from enum import Enum
+from loguru import logger
 
 
 class TimeFrame(str, Enum):
@@ -97,9 +98,41 @@ class ExchangeConnector(ABC):
             rate_limit_config: Rate limiting configuration
         """
         self.exchange_id = exchange_id
-        self.api_key = api_key
-        self.api_secret = api_secret
+        # Don't store keys as plain instance variables - use private attributes
+        self._api_key = api_key
+        self._api_secret = api_secret
         self.rate_limit_config = rate_limit_config
+
+        # Log API key usage safely
+        if api_key:
+            masked_key = self._mask_key(api_key)
+            logger.debug(f"{exchange_id} initialized with API key: {masked_key}")
+
+    @property
+    def api_key(self) -> Optional[str]:
+        """Get API key."""
+        return self._api_key
+
+    @property
+    def api_secret(self) -> Optional[str]:
+        """Get API secret."""
+        return self._api_secret
+
+    @staticmethod
+    def _mask_key(key: Optional[str]) -> str:
+        """Mask API key for logging.
+
+        Args:
+            key: API key to mask
+
+        Returns:
+            Masked key string
+        """
+        if not key:
+            return "None"
+        if len(key) < 8:
+            return "***"
+        return f"{key[:4]}...{key[-4:]}"
 
     @abstractmethod
     async def fetch_ohlcv(
@@ -203,7 +236,7 @@ class ExchangeConnector(ABC):
                 "taker_buy_quote_volume",
             ],
         )
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
         df = df.astype(
             {
                 "open": float,
@@ -214,6 +247,66 @@ class ExchangeConnector(ABC):
             }
         )
         return df
+
+    @staticmethod
+    def validate_dataframe(df: pd.DataFrame) -> tuple[bool, List[str]]:
+        """Validate OHLCV DataFrame before insert.
+
+        Args:
+            df: DataFrame to validate
+
+        Returns:
+            Tuple of (is_valid, list of error messages)
+        """
+        errors = []
+
+        if df.empty:
+            errors.append("DataFrame is empty")
+            return False, errors
+
+        # Check required columns
+        required_cols = ["timestamp", "open", "high", "low", "close", "volume"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            errors.append(f"Missing required columns: {missing_cols}")
+
+        # Validate OHLC relationships
+        invalid_high = df[df["high"] < df["low"]]
+        if not invalid_high.empty:
+            errors.append(f"Found {len(invalid_high)} rows where high < low")
+
+        invalid_high_open = df[df["high"] < df["open"]]
+        if not invalid_high_open.empty:
+            errors.append(f"Found {len(invalid_high_open)} rows where high < open")
+
+        invalid_high_close = df[df["high"] < df["close"]]
+        if not invalid_high_close.empty:
+            errors.append(f"Found {len(invalid_high_close)} rows where high < close")
+
+        invalid_low_open = df[df["low"] > df["open"]]
+        if not invalid_low_open.empty:
+            errors.append(f"Found {len(invalid_low_open)} rows where low > open")
+
+        invalid_low_close = df[df["low"] > df["close"]]
+        if not invalid_low_close.empty:
+            errors.append(f"Found {len(invalid_low_close)} rows where low > close")
+
+        # Validate volume
+        invalid_volume = df[df["volume"] < 0]
+        if not invalid_volume.empty:
+            errors.append(f"Found {len(invalid_volume)} rows with negative volume")
+
+        # Check for null values
+        null_counts = df[required_cols].isnull().sum()
+        if null_counts.any():
+            null_cols = null_counts[null_counts > 0].to_dict()
+            errors.append(f"Found null values: {null_cols}")
+
+        is_valid = len(errors) == 0
+        if not is_valid:
+            logger.warning(f"DataFrame validation failed: {'; '.join(errors)}")
+
+        return is_valid, errors
 
     @staticmethod
     def timeframe_to_seconds(timeframe: str) -> int:

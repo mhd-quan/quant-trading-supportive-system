@@ -1,0 +1,238 @@
+# Production Configuration
+# Settings optimized for production deployment
+
+# Application settings
+app:
+  name: "crypto-research-platform"
+  version: "1.0.0"
+  environment: "production"
+  debug: false
+
+# Data storage
+storage:
+  base_path: "/var/lib/crypto-research/data"
+  duckdb:
+    path: "/var/lib/crypto-research/data/crypto.duckdb"
+    memory_limit: "8GB"
+    threads: 8
+    checkpoint_threshold: "1GB"
+  parquet:
+    lake_path: "/var/lib/crypto-research/data/lake"
+    compression: "snappy"
+    row_group_size: 100000
+    partition_by: ["exchange", "symbol", "year", "month"]
+  backup:
+    enabled: true
+    path: "/var/backups/crypto-research"
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    retention_days: 30
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  output:
+    console:
+      enabled: true
+      level: "WARNING"
+    file:
+      enabled: true
+      path: "/var/log/crypto-research/app.log"
+      rotation: "100 MB"
+      retention: "30 days"
+      compression: "gz"
+    syslog:
+      enabled: true
+      host: "localhost"
+      port: 514
+      facility: "local0"
+
+# Performance
+performance:
+  max_workers: 8
+  chunk_size: 10000
+  cache:
+    enabled: true
+    backend: "redis"
+    redis_url: "redis://localhost:6379/0"
+    ttl: 3600
+  connection_pool:
+    max_connections: 20
+    timeout: 30
+
+# Exchange settings
+exchanges:
+  binance:
+    rate_limit:
+      requests_per_minute: 1000
+      weight_per_minute: 5000
+    retry:
+      max_attempts: 5
+      backoff_factor: 2.0
+      max_delay: 60
+  coinbase:
+    rate_limit:
+      requests_per_minute: 300
+    retry:
+      max_attempts: 3
+      backoff_factor: 1.5
+      max_delay: 30
+  kraken:
+    rate_limit:
+      requests_per_minute: 60
+    retry:
+      max_attempts: 3
+      backoff_factor: 2.0
+      max_delay: 45
+
+# WebSocket streaming
+streaming:
+  reconnect:
+    enabled: true
+    max_attempts: -1  # Infinite
+    initial_delay: 1
+    max_delay: 60
+    backoff_factor: 2.0
+  heartbeat:
+    enabled: true
+    interval: 30
+    timeout: 90
+  buffer:
+    size: 10000
+    flush_interval: 5
+  quality:
+    max_latency_ms: 500
+    max_gap_seconds: 10
+    alert_on_degradation: true
+
+# Data collection
+collection:
+  timeframes:
+    - 1m
+    - 5m
+    - 15m
+    - 1h
+    - 4h
+    - 1d
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - BNB/USDT
+    - SOL/USDT
+    - XRP/USDT
+  validation:
+    enabled: true
+    checks:
+      - gaps
+      - duplicates
+      - outliers
+      - timestamp_order
+    schedule: "*/30 * * * *"  # Every 30 minutes
+
+# Prefect orchestration
+prefect:
+  api_url: "http://localhost:4200/api"
+  work_pool: "production-pool"
+  deployments:
+    stream:
+      schedule:
+        cron: "* * * * *"  # Every minute
+      tags: ["production", "streaming"]
+      parameters:
+        exchanges: ["binance", "coinbase"]
+    backfill:
+      schedule: null  # Manual only
+      tags: ["production", "backfill"]
+    validation:
+      schedule:
+        cron: "0 * * * *"  # Hourly
+      tags: ["production", "validation"]
+
+# Security
+security:
+  api_keys:
+    storage: "env"  # env, vault, secrets_manager
+    rotation_days: 90
+  encryption:
+    enabled: true
+    algorithm: "AES-256-GCM"
+  tls:
+    enabled: true
+    verify: true
+    cert_path: "/etc/crypto-research/certs"
+  ip_whitelist:
+    enabled: false
+    addresses: []
+
+# Monitoring
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 9090
+    metrics_path: "/metrics"
+    scrape_interval: "15s"
+  health_check:
+    enabled: true
+    endpoint: "/health"
+    port: 8080
+  alerts:
+    enabled: true
+    webhook_url: null  # Set in production
+    channels:
+      - type: "email"
+        recipients: ["ops@example.com"]
+      - type: "slack"
+        webhook_url: null
+    rules:
+      - name: "data_gap"
+        condition: "gap > 5min"
+        severity: "critical"
+      - name: "high_latency"
+        condition: "latency > 1s"
+        severity: "warning"
+      - name: "exchange_down"
+        condition: "connection_failures > 5"
+        severity: "critical"
+
+# Resource limits
+resources:
+  memory:
+    max_usage_gb: 12
+    warning_threshold_percent: 80
+  disk:
+    max_usage_gb: 500
+    warning_threshold_percent: 85
+    cleanup:
+      enabled: true
+      retention_days: 365
+  cpu:
+    max_usage_percent: 80
+
+# Backtest settings (production runs)
+backtest:
+  parallel_runs: 4
+  max_combinations: 5000
+  timeout_minutes: 120
+  save_results: true
+  results_path: "/var/lib/crypto-research/backtest_results"
+
+# UI settings
+ui:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8501
+  max_upload_mb: 200
+  session_timeout: 3600
+  authentication:
+    enabled: false  # Set to true for production
+    method: "oauth2"  # oauth2, basic, api_key
+
+# Feature flags
+features:
+  pattern_recognition: true
+  ict_analysis: true
+  multi_timeframe: true
+  paper_trading: false  # Disable in production
+  live_trading: false   # Requires separate approval
+  experimental_strategies: false

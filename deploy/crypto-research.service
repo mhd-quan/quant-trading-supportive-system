@@ -1,0 +1,38 @@
+[Unit]
+Description=Crypto Research Platform - Streamlit UI
+After=network.target
+Wants=crypto-research-collector.service crypto-research-validator.service
+
+[Service]
+Type=simple
+User=crypto-research
+Group=crypto-research
+WorkingDirectory=/opt/crypto-research
+Environment="PATH=/opt/crypto-research/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/crypto-research/env
+
+ExecStart=/opt/crypto-research/.venv/bin/streamlit run src/ui/app.py --server.port=8501 --server.address=0.0.0.0
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/crypto-research /var/log/crypto-research
+
+# Resource limits
+MemoryLimit=8G
+CPUQuota=400%
+TasksMax=512
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-research-ui
+
+[Install]
+WantedBy=multi-user.target

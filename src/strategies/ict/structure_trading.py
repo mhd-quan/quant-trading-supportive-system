@@ -44,14 +44,14 @@ class ICTStructureStrategy(BaseStrategy):
                 continue
 
             if ob.direction == "bullish":
-                # Look for price testing the order block
+                # Look for price testing the order block (check if candle overlaps OB range)
                 test = future_data[
-                    (future_data["low"] <= ob.high) & (future_data["low"] >= ob.low)
+                    (future_data["low"] <= ob.high) & (future_data["high"] >= ob.low)
                 ]
                 if len(test) > 0:
                     entry_row = test.iloc[0]
-                    entry_price = ob.high
-                    stop_loss = ob.low
+                    entry_price = ob.low  # Enter at support (low of order block)
+                    stop_loss = ob.low * 0.995  # Stop just below the order block
                     take_profit = entry_price + (entry_price - stop_loss) * 2
 
                     signals.append(
@@ -68,13 +68,14 @@ class ICTStructureStrategy(BaseStrategy):
                     )
 
             elif ob.direction == "bearish":
+                # Look for price testing the order block (check if candle overlaps OB range)
                 test = future_data[
-                    (future_data["high"] >= ob.low) & (future_data["high"] <= ob.high)
+                    (future_data["high"] >= ob.low) & (future_data["low"] <= ob.high)
                 ]
                 if len(test) > 0:
                     entry_row = test.iloc[0]
-                    entry_price = ob.low
-                    stop_loss = ob.high
+                    entry_price = ob.high  # Enter at resistance (high of order block)
+                    stop_loss = ob.high * 1.005  # Stop just above the order block
                     take_profit = entry_price - (stop_loss - entry_price) * 2
 
                     signals.append(
@@ -91,5 +92,17 @@ class ICTStructureStrategy(BaseStrategy):
                     )
 
         self.signals = signals
-        logger.info(f"Generated {len(signals)} ICT structure signals")
+
+        if len(signals) == 0:
+            logger.warning(
+                f"No ICT structure signals generated. "
+                f"Order blocks detected: {len(order_blocks)}, "
+                f"FVGs detected: {len(fvgs)}, "
+                f"Structure points: {len(structure_points)}. "
+                f"Possible reasons: No price retests of order blocks, "
+                f"or all OBs too old/invalid"
+            )
+        else:
+            logger.info(f"Generated {len(signals)} ICT structure signals")
+
         return signals

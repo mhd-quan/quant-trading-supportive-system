@@ -1,0 +1,172 @@
+# Prometheus alerting rules
+
+groups:
+  - name: crypto_research_alerts
+    interval: 30s
+    rules:
+      # Data collection alerts
+      - alert: DataCollectionStopped
+        expr: rate(data_points_collected_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          category: data
+        annotations:
+          summary: "Data collection has stopped for {{ $labels.exchange }}"
+          description: "No data points collected from {{ $labels.exchange }} for 5 minutes"
+
+      - alert: HighDataLatency
+        expr: websocket_message_latency_seconds > 1
+        for: 2m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High WebSocket latency detected"
+          description: "WebSocket latency is {{ $value }}s for {{ $labels.exchange }}"
+
+      - alert: DataGapDetected
+        expr: data_gap_seconds > 300
+        for: 1m
+        labels:
+          severity: warning
+          category: data_quality
+        annotations:
+          summary: "Data gap detected for {{ $labels.symbol }}"
+          description: "Gap of {{ $value }}s detected in {{ $labels.exchange }}/{{ $labels.symbol }}"
+
+      # System resource alerts
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High memory usage in {{ $labels.container_label_com_docker_compose_service }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} of limit"
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High CPU usage in {{ $labels.container_label_com_docker_compose_service }}"
+          description: "CPU usage is {{ $value | humanizePercentage }}"
+
+      - alert: DiskSpaceRunningOut
+        expr: (node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"}) < 0.15
+        for: 5m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "Disk space running out"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      # Database alerts
+      - alert: SlowQueries
+        expr: histogram_quantile(0.95, rate(query_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Slow database queries detected"
+          description: "95th percentile query latency is {{ $value }}s"
+
+      - alert: DatabaseConnectionErrors
+        expr: rate(database_connection_errors_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "Database connection errors"
+          description: "Database connection errors: {{ $value }}/s"
+
+      # Exchange connectivity alerts
+      - alert: ExchangeAPIDown
+        expr: exchange_api_status == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: connectivity
+        annotations:
+          summary: "Exchange API down: {{ $labels.exchange }}"
+          description: "Cannot connect to {{ $labels.exchange }} API"
+
+      - alert: HighAPIErrorRate
+        expr: rate(exchange_api_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: connectivity
+        annotations:
+          summary: "High API error rate for {{ $labels.exchange }}"
+          description: "API error rate: {{ $value }}/s"
+
+      - alert: RateLimitApproaching
+        expr: exchange_rate_limit_remaining / exchange_rate_limit_total < 0.2
+        for: 1m
+        labels:
+          severity: warning
+          category: rate_limit
+        annotations:
+          summary: "Approaching rate limit for {{ $labels.exchange }}"
+          description: "Only {{ $value | humanizePercentage }} of rate limit remaining"
+
+      # WebSocket alerts
+      - alert: WebSocketDisconnected
+        expr: websocket_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: connectivity
+        annotations:
+          summary: "WebSocket disconnected for {{ $labels.exchange }}"
+          description: "WebSocket connection lost for {{ $labels.exchange }}/{{ $labels.symbol }}"
+
+      - alert: FrequentWebSocketReconnects
+        expr: rate(websocket_reconnections_total[10m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: connectivity
+        annotations:
+          summary: "Frequent WebSocket reconnections"
+          description: "WebSocket reconnecting {{ $value }}/s for {{ $labels.exchange }}"
+
+      # Application health alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 1 minute"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: errors
+        annotations:
+          summary: "High error rate in {{ $labels.service }}"
+          description: "Error rate: {{ $value }}/s"
+
+      # Strategy/Backtest alerts
+      - alert: BacktestFailures
+        expr: rate(backtest_failures_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: backtest
+        annotations:
+          summary: "Backtest failures detected"
+          description: "Backtests failing at {{ $value }}/s"

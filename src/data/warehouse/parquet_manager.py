@@ -93,20 +93,32 @@ class ParquetManager:
             # Remove partition columns from data
             data_df = group_df.drop(columns=["year", "month"])
 
-            # Write to Parquet
+            # Atomic write: write to .tmp file, then rename
             file_path = partition_path / "data.parquet"
-            table = pa.Table.from_pandas(data_df)
-            pq.write_table(
-                table,
-                file_path,
-                compression=compression,
-                use_dictionary=True,
-                write_statistics=True,
-            )
+            tmp_file_path = partition_path / ".data.parquet.tmp"
 
-            logger.info(
-                f"Wrote {len(data_df)} rows to {file_path}"
-            )
+            try:
+                table = pa.Table.from_pandas(data_df)
+                pq.write_table(
+                    table,
+                    tmp_file_path,
+                    compression=compression,
+                    use_dictionary=True,
+                    write_statistics=True,
+                )
+
+                # Atomic rename
+                tmp_file_path.rename(file_path)
+
+                logger.info(
+                    f"Wrote {len(data_df)} rows to {file_path}"
+                )
+            except Exception as e:
+                # Clean up temp file on error
+                if tmp_file_path.exists():
+                    tmp_file_path.unlink()
+                logger.error(f"Error writing parquet file: {e}")
+                raise
 
     def read_partition(
         self,

@@ -51,6 +51,8 @@ class CoinbaseConnector(ExchangeConnector):
                 "secret": api_secret,
                 "password": password,
                 "enableRateLimit": True,
+                "verify": True,  # SSL/TLS verification
+                "timeout": 30000,  # 30 second timeout
             }
         )
 
@@ -97,7 +99,7 @@ class CoinbaseConnector(ExchangeConnector):
             df = pd.DataFrame(
                 ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
             )
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
             df["exchange"] = self.exchange_id
             df["symbol"] = symbol
             df["timeframe"] = timeframe
@@ -117,6 +119,116 @@ class CoinbaseConnector(ExchangeConnector):
         except Exception as e:
             logger.error(f"Unexpected error fetching {symbol} {timeframe}: {e}")
             raise
+
+    async def fetch_ohlcv_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: datetime,
+        end_date: Optional[datetime] = None,
+        batch_size: int = 300,
+    ) -> pd.DataFrame:
+        """Fetch OHLCV data for a date range.
+
+        Args:
+            symbol: Trading pair
+            timeframe: Timeframe
+            start_date: Start date
+            end_date: End date (default: now)
+            batch_size: Number of candles per request
+
+        Returns:
+            Complete DataFrame for the date range
+        """
+        from datetime import timezone as tz
+
+        if end_date is None:
+            end_date = datetime.now(tz.utc)
+
+        all_data = []
+        failed_batches = []
+        current_timestamp = int(start_date.timestamp() * 1000)
+        end_timestamp = int(end_date.timestamp() * 1000)
+        timeframe_ms = self.timeframe_to_milliseconds(timeframe)
+
+        logger.info(
+            f"Fetching {symbol} {timeframe} from {start_date} to {end_date}"
+        )
+
+        retry_count = 0
+        max_retries = 3
+
+        while current_timestamp < end_timestamp:
+            try:
+                df = await self.fetch_ohlcv(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    since=current_timestamp,
+                    limit=batch_size,
+                )
+
+                if df.empty:
+                    logger.warning(f"No more data available at {current_timestamp}")
+                    break
+
+                # Filter results to not exceed end_timestamp
+                df = df[df["timestamp"] <= pd.Timestamp(end_date)]
+
+                if not df.empty:
+                    all_data.append(df)
+
+                # Move to next batch
+                last_timestamp = int(df.iloc[-1]["timestamp"].timestamp() * 1000)
+                current_timestamp = last_timestamp + timeframe_ms
+
+                # Reset retry count on success
+                retry_count = 0
+
+                # Rate limiting (Coinbase is more strict)
+                await asyncio.sleep(0.5)
+
+                logger.debug(
+                    f"Progress: {sum(len(d) for d in all_data)} candles fetched"
+                )
+
+            except Exception as e:
+                retry_count += 1
+                logger.error(
+                    f"Error during batch fetch at {current_timestamp}: {e} (retry {retry_count}/{max_retries})"
+                )
+
+                # Track failed batch
+                failed_batches.append({
+                    "timestamp": current_timestamp,
+                    "error": str(e),
+                    "retry_count": retry_count
+                })
+
+                if retry_count >= max_retries:
+                    logger.error(f"Max retries reached for batch at {current_timestamp}, skipping")
+                    # Skip this batch and move to next
+                    current_timestamp += timeframe_ms * batch_size
+                    retry_count = 0
+                    continue
+
+                # Exponential backoff
+                await asyncio.sleep(2 ** retry_count)
+
+        if not all_data:
+            logger.warning("No data fetched successfully")
+            return pd.DataFrame()
+
+        # Report failed batches
+        if failed_batches:
+            logger.warning(f"Failed to fetch {len(failed_batches)} batches: {failed_batches}")
+
+        # Concatenate all batches
+        result = pd.concat(all_data, ignore_index=True)
+        result = result.drop_duplicates(subset=["timestamp"], keep="first")
+        result = result.sort_values("timestamp").reset_index(drop=True)
+
+        logger.info(f"Fetched total {len(result)} candles for {symbol} {timeframe}")
+        return result
 
     async def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         """Fetch current ticker."""

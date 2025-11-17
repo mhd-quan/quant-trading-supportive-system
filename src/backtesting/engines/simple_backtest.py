@@ -128,25 +128,55 @@ class SimpleBacktestEngine:
             future_data = df.iloc[signal_idx + 1 :]
 
             for idx, row in future_data.iterrows():
-                # Check stop loss
+                # Check which level (SL or TP) is hit first on same candle
                 if signal.signal_type == SignalType.LONG:
-                    if row["low"] <= signal.stop_loss:
+                    sl_hit = row["low"] <= signal.stop_loss
+                    tp_hit = row["high"] >= signal.take_profit
+
+                    if sl_hit and tp_hit:
+                        # Both hit on same candle - check which is closer to open
+                        dist_to_sl = abs(row["open"] - signal.stop_loss)
+                        dist_to_tp = abs(row["open"] - signal.take_profit)
+                        if dist_to_sl < dist_to_tp:
+                            exit_price = signal.stop_loss
+                            exit_reason = "stop_loss"
+                        else:
+                            exit_price = signal.take_profit
+                            exit_reason = "take_profit"
+                        exit_time = row["timestamp"]
+                        break
+                    elif sl_hit:
                         exit_price = signal.stop_loss
                         exit_time = row["timestamp"]
                         exit_reason = "stop_loss"
                         break
-                    elif row["high"] >= signal.take_profit:
+                    elif tp_hit:
                         exit_price = signal.take_profit
                         exit_time = row["timestamp"]
                         exit_reason = "take_profit"
                         break
                 else:  # SHORT
-                    if row["high"] >= signal.stop_loss:
+                    sl_hit = row["high"] >= signal.stop_loss
+                    tp_hit = row["low"] <= signal.take_profit
+
+                    if sl_hit and tp_hit:
+                        # Both hit on same candle - check which is closer to open
+                        dist_to_sl = abs(row["open"] - signal.stop_loss)
+                        dist_to_tp = abs(row["open"] - signal.take_profit)
+                        if dist_to_sl < dist_to_tp:
+                            exit_price = signal.stop_loss
+                            exit_reason = "stop_loss"
+                        else:
+                            exit_price = signal.take_profit
+                            exit_reason = "take_profit"
+                        exit_time = row["timestamp"]
+                        break
+                    elif sl_hit:
                         exit_price = signal.stop_loss
                         exit_time = row["timestamp"]
                         exit_reason = "stop_loss"
                         break
-                    elif row["low"] <= signal.take_profit:
+                    elif tp_hit:
                         exit_price = signal.take_profit
                         exit_time = row["timestamp"]
                         exit_reason = "take_profit"
@@ -216,12 +246,20 @@ class SimpleBacktestEngine:
         returns = equity_series.pct_change().dropna()
         total_return = ((equity_curve[-1] - self.initial_capital) / self.initial_capital) * 100
 
-        # Sharpe ratio (annualized)
-        sharpe = (
-            (returns.mean() / returns.std()) * np.sqrt(252)
-            if returns.std() > 0
-            else 0
-        )
+        # Sharpe ratio (annualized based on actual time periods)
+        if returns.std() > 0 and len(timestamps) > 1:
+            # Calculate average time between equity updates
+            time_diffs = pd.Series(timestamps).diff().dropna()
+            avg_period_days = time_diffs.mean().total_seconds() / (24 * 3600)
+
+            if avg_period_days > 0:
+                # Annualization factor based on actual periods
+                periods_per_year = 365.25 / avg_period_days
+                sharpe = (returns.mean() / returns.std()) * np.sqrt(periods_per_year)
+            else:
+                sharpe = 0
+        else:
+            sharpe = 0
 
         # Max drawdown
         running_max = equity_series.expanding().max()
@@ -238,7 +276,7 @@ class SimpleBacktestEngine:
 
         gross_profit = sum(t.pnl for t in winning)
         gross_loss = abs(sum(t.pnl for t in losing))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
 
         return BacktestResults(
             trades=trades,

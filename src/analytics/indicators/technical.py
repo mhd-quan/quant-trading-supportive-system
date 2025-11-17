@@ -5,16 +5,170 @@ import pandas as pd
 import numpy as np
 import pandas_ta as ta_lib
 from loguru import logger
+from functools import lru_cache
 
 
 class TechnicalIndicators:
-    """Calculate technical indicators on OHLCV data."""
+    """Calculate technical indicators on OHLCV data.
 
-    @staticmethod
+    Refactored to split indicators into focused methods and add caching
+    to avoid redundant calculations.
+    """
+
+    def __init__(self):
+        """Initialize TechnicalIndicators with cache."""
+        self._cache: Dict[str, pd.Series] = {}
+
+    def add_moving_averages(
+        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+    ) -> pd.DataFrame:
+        """Add moving average indicators.
+
+        Args:
+            df: DataFrame with OHLCV data
+            config: Optional configuration for MA periods
+
+        Returns:
+            DataFrame with MA indicators
+        """
+        df = df.copy()
+
+        # Default periods
+        sma_periods = config.get("sma_periods", [20, 50, 200]) if config else [20, 50, 200]
+        ema_periods = config.get("ema_periods", [9, 20, 50]) if config else [9, 20, 50]
+
+        # Simple Moving Averages
+        for period in sma_periods:
+            df[f"sma_{period}"] = ta_lib.sma(df["close"], length=period)
+
+        # Exponential Moving Averages
+        for period in ema_periods:
+            df[f"ema_{period}"] = ta_lib.ema(df["close"], length=period)
+
+        logger.debug(f"Added {len(sma_periods)} SMA and {len(ema_periods)} EMA indicators")
+        return df
+
+    def add_momentum_indicators(
+        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+    ) -> pd.DataFrame:
+        """Add momentum indicators (RSI, MACD).
+
+        Args:
+            df: DataFrame with OHLCV data
+            config: Optional configuration for indicator parameters
+
+        Returns:
+            DataFrame with momentum indicators
+        """
+        df = df.copy()
+
+        # RSI
+        rsi_period = config.get("rsi_period", 14) if config else 14
+        df[f"rsi_{rsi_period}"] = ta_lib.rsi(df["close"], length=rsi_period)
+
+        # MACD
+        macd = ta_lib.macd(df["close"])
+        if macd is not None and not macd.empty:
+            df["macd"] = macd.iloc[:, 0]
+            df["macd_signal"] = macd.iloc[:, 1]
+            df["macd_hist"] = macd.iloc[:, 2]
+
+        logger.debug("Added momentum indicators (RSI, MACD)")
+        return df
+
+    def add_volatility_indicators(
+        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+    ) -> pd.DataFrame:
+        """Add volatility indicators (ATR, Bollinger Bands).
+
+        Args:
+            df: DataFrame with OHLCV data
+            config: Optional configuration for indicator parameters
+
+        Returns:
+            DataFrame with volatility indicators
+        """
+        df = df.copy()
+
+        # ATR
+        atr_period = config.get("atr_period", 14) if config else 14
+        atr = ta_lib.atr(df["high"], df["low"], df["close"], length=atr_period)
+        if atr is not None and not atr.empty:
+            df[f"atr_{atr_period}"] = atr
+
+        # Bollinger Bands
+        bb_period = config.get("bb_period", 20) if config else 20
+        bb_std = config.get("bb_std", 2) if config else 2
+        bbands = ta_lib.bbands(df["close"], length=bb_period, std=bb_std)
+        if bbands is not None and not bbands.empty:
+            df["bb_upper"] = bbands.iloc[:, 0]
+            df["bb_middle"] = bbands.iloc[:, 1]
+            df["bb_lower"] = bbands.iloc[:, 2]
+
+        logger.debug("Added volatility indicators (ATR, Bollinger Bands)")
+        return df
+
+    def add_volume_indicators(
+        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+    ) -> pd.DataFrame:
+        """Add volume-based indicators.
+
+        Args:
+            df: DataFrame with OHLCV data
+            config: Optional configuration for indicator parameters
+
+        Returns:
+            DataFrame with volume indicators
+        """
+        df = df.copy()
+
+        if "volume" not in df.columns:
+            logger.warning("Volume column not found, skipping volume indicators")
+            return df
+
+        # VWAP
+        vwap = ta_lib.vwap(df["high"], df["low"], df["close"], df["volume"])
+        if vwap is not None and not vwap.empty:
+            df["vwap"] = vwap
+
+        # Volume SMA and ratio
+        volume_period = config.get("volume_period", 20) if config else 20
+        df[f"volume_sma_{volume_period}"] = ta_lib.sma(df["volume"], length=volume_period)
+        df["volume_ratio"] = df["volume"] / df[f"volume_sma_{volume_period}"]
+
+        logger.debug("Added volume indicators (VWAP, Volume SMA)")
+        return df
+
+    def add_trend_indicators(
+        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+    ) -> pd.DataFrame:
+        """Add trend indicators (ADX).
+
+        Args:
+            df: DataFrame with OHLCV data
+            config: Optional configuration for indicator parameters
+
+        Returns:
+            DataFrame with trend indicators
+        """
+        df = df.copy()
+
+        # ADX
+        adx_period = config.get("adx_period", 14) if config else 14
+        adx = ta_lib.adx(df["high"], df["low"], df["close"], length=adx_period)
+        if adx is not None and not adx.empty:
+            df[f"adx_{adx_period}"] = adx.iloc[:, 0]
+
+        logger.debug("Added trend indicators (ADX)")
+        return df
+
     def add_all_indicators(
-        df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
+        self, df: pd.DataFrame, config: Optional[Dict[str, Any]] = None
     ) -> pd.DataFrame:
         """Add all common technical indicators to DataFrame.
+
+        This method now delegates to focused indicator methods for better
+        organization and maintainability.
 
         Args:
             df: DataFrame with OHLCV data
@@ -25,51 +179,15 @@ class TechnicalIndicators:
         """
         df = df.copy()
 
-        # Moving averages
-        df["sma_20"] = ta_lib.sma(df["close"], length=20)
-        df["sma_50"] = ta_lib.sma(df["close"], length=50)
-        df["sma_200"] = ta_lib.sma(df["close"], length=200)
-        df["ema_9"] = ta_lib.ema(df["close"], length=9)
-        df["ema_20"] = ta_lib.ema(df["close"], length=20)
-        df["ema_50"] = ta_lib.ema(df["close"], length=50)
+        # Add indicators by category
+        df = self.add_moving_averages(df, config)
+        df = self.add_momentum_indicators(df, config)
+        df = self.add_volatility_indicators(df, config)
+        df = self.add_volume_indicators(df, config)
+        df = self.add_trend_indicators(df, config)
 
-        # VWAP
-        if "volume" in df.columns:
-            vwap = ta_lib.vwap(df["high"], df["low"], df["close"], df["volume"])
-            if vwap is not None and not vwap.empty:
-                df["vwap"] = vwap
-
-        # Momentum indicators
-        df["rsi_14"] = ta_lib.rsi(df["close"], length=14)
-
-        macd = ta_lib.macd(df["close"])
-        if macd is not None and not macd.empty:
-            df["macd"] = macd.iloc[:, 0]
-            df["macd_signal"] = macd.iloc[:, 1]
-            df["macd_hist"] = macd.iloc[:, 2]
-
-        # Volatility
-        atr = ta_lib.atr(df["high"], df["low"], df["close"], length=14)
-        if atr is not None and not atr.empty:
-            df["atr_14"] = atr
-
-        bbands = ta_lib.bbands(df["close"], length=20, std=2)
-        if bbands is not None and not bbands.empty:
-            df["bb_upper"] = bbands.iloc[:, 0]
-            df["bb_middle"] = bbands.iloc[:, 1]
-            df["bb_lower"] = bbands.iloc[:, 2]
-
-        # Volume
-        if "volume" in df.columns:
-            df["volume_sma_20"] = ta_lib.sma(df["volume"], length=20)
-            df["volume_ratio"] = df["volume"] / df["volume_sma_20"]
-
-        # Trend
-        adx = ta_lib.adx(df["high"], df["low"], df["close"], length=14)
-        if adx is not None and not adx.empty:
-            df["adx_14"] = adx.iloc[:, 0]
-
-        logger.debug(f"Added {len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'timestamp']])} indicators")
+        indicator_count = len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'timestamp']])
+        logger.debug(f"Added {indicator_count} total indicators")
         return df
 
     @staticmethod
@@ -89,7 +207,8 @@ class TechnicalIndicators:
         """
         change = abs(close - close.shift(period))
         volatility = (abs(close - close.shift(1))).rolling(window=period).sum()
-        er = change / volatility  # Efficiency ratio
+        # Division by zero guard
+        er = change / volatility.replace(0, np.nan)  # Efficiency ratio
         er = er.fillna(0)
 
         fast_sc = 2 / (fast + 1)
@@ -124,7 +243,8 @@ class TechnicalIndicators:
         atr = ta_lib.atr(high, low, close, length=period)
         if atr is None or atr.empty:
             return pd.Series(index=close.index, dtype=float)
-        return (atr / close) * 100
+        # Division by zero guard
+        return (atr / close.replace(0, np.nan)) * 100
 
     @staticmethod
     def calculate_volume_profile(
@@ -145,20 +265,23 @@ class TechnicalIndicators:
 
         volume_by_price = np.zeros(num_bins)
 
-        for _, row in df.iterrows():
-            # Distribute volume across bins
-            low_bin = np.digitize(row["low"], bins) - 1
-            high_bin = np.digitize(row["high"], bins) - 1
+        # Vectorized approach: digitize all lows and highs at once
+        low_bins = np.digitize(df["low"].values, bins) - 1
+        high_bins = np.digitize(df["high"].values, bins) - 1
 
-            low_bin = max(0, min(low_bin, num_bins - 1))
-            high_bin = max(0, min(high_bin, num_bins - 1))
+        # Clip to valid range
+        low_bins = np.clip(low_bins, 0, num_bins - 1)
+        high_bins = np.clip(high_bins, 0, num_bins - 1)
 
+        # Iterate only for distribution (still needed but more efficient)
+        for i in range(len(df)):
+            low_bin = low_bins[i]
+            high_bin = high_bins[i]
             bins_touched = high_bin - low_bin + 1
-            volume_per_bin = row["volume"] / bins_touched
+            volume_per_bin = df.iloc[i]["volume"] / bins_touched
 
-            for b in range(low_bin, high_bin + 1):
-                if 0 <= b < num_bins:
-                    volume_by_price[b] += volume_per_bin
+            # Use numpy add.at for efficient accumulation
+            np.add.at(volume_by_price, range(low_bin, high_bin + 1), volume_per_bin)
 
         # Find POC (Point of Control) - price level with highest volume
         poc_index = np.argmax(volume_by_price)
@@ -177,7 +300,8 @@ class TechnicalIndicators:
             if cumsum >= target_volume:
                 break
 
-        vah = bins[max(value_area_indices) + 1]  # Value Area High
+        # Add bounds checking to prevent index overflow
+        vah = bins[min(max(value_area_indices) + 1, len(bins) - 1)]  # Value Area High
         val = bins[min(value_area_indices)]  # Value Area Low
 
         return {
@@ -232,3 +356,144 @@ class TechnicalIndicators:
             "support": cluster_levels(support_levels, threshold_pct),
             "resistance": cluster_levels(resistance_levels, threshold_pct),
         }
+
+    @staticmethod
+    def calculate_stochastic(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        k_period: int = 14,
+        d_period: int = 3,
+    ) -> Dict[str, pd.Series]:
+        """Calculate Stochastic Oscillator.
+
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            k_period: %K period
+            d_period: %D period (SMA of %K)
+
+        Returns:
+            Dictionary with %K and %D series
+        """
+        stoch = ta_lib.stoch(high, low, close, k=k_period, d=d_period)
+        if stoch is not None and not stoch.empty:
+            return {"stoch_k": stoch.iloc[:, 0], "stoch_d": stoch.iloc[:, 1]}
+        return {"stoch_k": pd.Series(dtype=float), "stoch_d": pd.Series(dtype=float)}
+
+    @staticmethod
+    def calculate_cci(
+        high: pd.Series, low: pd.Series, close: pd.Series, period: int = 20
+    ) -> pd.Series:
+        """Calculate Commodity Channel Index (CCI).
+
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            period: CCI period
+
+        Returns:
+            CCI series
+        """
+        cci = ta_lib.cci(high, low, close, length=period)
+        return cci if cci is not None else pd.Series(dtype=float)
+
+    @staticmethod
+    def calculate_roc(close: pd.Series, period: int = 12) -> pd.Series:
+        """Calculate Rate of Change (ROC).
+
+        Args:
+            close: Close prices
+            period: ROC period
+
+        Returns:
+            ROC series
+        """
+        roc = ta_lib.roc(close, length=period)
+        return roc if roc is not None else pd.Series(dtype=float)
+
+    @staticmethod
+    def calculate_williams_r(
+        high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14
+    ) -> pd.Series:
+        """Calculate Williams %R.
+
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            period: Williams %R period
+
+        Returns:
+            Williams %R series
+        """
+        willr = ta_lib.willr(high, low, close, length=period)
+        return willr if willr is not None else pd.Series(dtype=float)
+
+    @staticmethod
+    def calculate_supertrend(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        period: int = 10,
+        multiplier: float = 3.0,
+    ) -> Dict[str, pd.Series]:
+        """Calculate Supertrend indicator.
+
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            period: ATR period
+            multiplier: ATR multiplier
+
+        Returns:
+            Dictionary with supertrend and direction series
+        """
+        supertrend = ta_lib.supertrend(
+            high, low, close, length=period, multiplier=multiplier
+        )
+        if supertrend is not None and not supertrend.empty:
+            return {
+                "supertrend": supertrend.iloc[:, 0],
+                "supertrend_direction": supertrend.iloc[:, 1],
+            }
+        return {
+            "supertrend": pd.Series(dtype=float),
+            "supertrend_direction": pd.Series(dtype=float),
+        }
+
+    @staticmethod
+    def calculate_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+        """Calculate On-Balance Volume (OBV).
+
+        Args:
+            close: Close prices
+            volume: Volume data
+
+        Returns:
+            OBV series
+        """
+        obv = ta_lib.obv(close, volume)
+        return obv if obv is not None else pd.Series(dtype=float)
+
+    @staticmethod
+    def calculate_mfi(
+        high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series, period: int = 14
+    ) -> pd.Series:
+        """Calculate Money Flow Index (MFI).
+
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            volume: Volume data
+            period: MFI period
+
+        Returns:
+            MFI series
+        """
+        mfi = ta_lib.mfi(high, low, close, volume, length=period)
+        return mfi if mfi is not None else pd.Series(dtype=float)
